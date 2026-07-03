@@ -59,7 +59,6 @@ BEFORE_SCRIPT: |
     --moe-shared-expert-intermediate-size 3712 \
     --moe-token-dispatcher-type alltoall \
     --moe-permute-fusion \
-    --moe-grouped-gemm \
     --use-fused-weighted-squared-relu \
     --attention-backend fused \
     --disable-gloo-process-groups \
