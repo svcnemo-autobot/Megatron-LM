@@ -113,7 +113,6 @@ MODEL_ARGS:
   --moe-shared-expert-intermediate-size: 3712
   --moe-token-dispatcher-type: alltoall
   --moe-permute-fusion: true
-  --moe-grouped-gemm: true
   --use-fused-weighted-squared-relu: true
   # Tokenizer
   --tokenizer-type: SFTTokenizer
