@@ -97,8 +97,15 @@ products:
       # - environment: [lts] # disabled until triton is bumped
       #   scope: [nightly]
 
-  - test_case: [hybrid_nemotron_v3_pico_7b_a1b_tp1_ep8_QAD_dgx_h100_1N8G]
-    products:
-      - environment: [dev]
-        scope: [mr, mr-github]
-        platforms: [dgx_h100]
+  # Quarantined: the NVFP4 QAD MoE PTQ Stage-1 calibration crashes inside
+  # ModelOpt's monkeypatch of TE GroupedLinear.forward with
+  # "TypeError: object of type 'bool' has no len()" in
+  # modelopt/torch/quantization/plugins/transformer_engine.py
+  # (te_grouped_quantized_linear_fn). This is a ModelOpt<->TE grouped-GEMM API
+  # mismatch, not a Megatron regression. Re-enable once ModelOpt/TE are bumped
+  # to compatible versions.
+  # - test_case: [hybrid_nemotron_v3_pico_7b_a1b_tp1_ep8_QAD_dgx_h100_1N8G]
+  #   products:
+  #     - environment: [dev]
+  #       scope: [mr, mr-github]
+  #       platforms: [dgx_h100]
