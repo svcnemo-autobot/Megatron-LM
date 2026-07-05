@@ -103,7 +103,7 @@ class TestReadGoldenValuesFromJson:
         assert result["lm loss"].values == {1: 2.0, 5: 1.0}
 
     def test_missing_file_raises(self, tmp_path):
-        with pytest.raises(OSError):
+        with pytest.raises(ValueError):
             read_golden_values_from_json(str(tmp_path / "nope.json"))
 
     def test_missing_file_raises_value_error_naming_path(self, tmp_path):
