@@ -106,6 +106,18 @@ class TestReadGoldenValuesFromJson:
         with pytest.raises(OSError):
             read_golden_values_from_json(str(tmp_path / "nope.json"))
 
+    def test_missing_file_raises_informative_value_error(self, tmp_path):
+        # A missing golden-values file must surface the informative
+        # ``ValueError("File ... not found!")`` the function documents, not a
+        # bare ``FileNotFoundError`` from opening a path the code never checked
+        # existed first. Regression guard for the dead-code existence check in
+        # ``read_golden_values_from_json``.
+        missing = tmp_path / "nope.json"
+        with pytest.raises(ValueError) as exc_info:
+            read_golden_values_from_json(str(missing))
+        assert "not found" in str(exc_info.value)
+        assert str(missing) in str(exc_info.value)
+
 
 class TestLoadEventAccumulatorsWithScalars:
     def test_drops_scalarless_and_preserves_order(self, monkeypatch):
