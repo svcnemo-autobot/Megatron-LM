@@ -178,6 +178,34 @@ class TestReadTbLogsAsList:
         assert values[1] == 1.0
         assert values[5] == 5.0
 
+    def test_reads_event_file_under_results_subdir(self, monkeypatch, tmp_path):
+        # ``read_tb_logs_as_list`` globs for event files under ``{path}`` *and*
+        # ``{path}/results``. Its mtime sort key must handle a file that really
+        # lives under ``results/``: the key rebuilds the path from the basename
+        # only, so a ``results/`` file must not be looked up at the wrong,
+        # nonexistent ``{path}/<name>`` location (which raises FileNotFoundError).
+        #
+        # Only EventAccumulator and glob are faked; the real ``os.path.getmtime``
+        # runs against a real on-disk file so the sort key is exercised for real.
+        results_dir = tmp_path / "results"
+        results_dir.mkdir()
+        event_file = results_dir / "events.out.tfevents.123.host"
+        event_file.write_text("")
+        event_path = str(event_file)
+
+        acc = _FakeEventAccumulator({"lm loss": [(1, 1.0)]})
+        monkeypatch.setattr(common.glob, "glob", lambda pattern: [event_path] if "results" in pattern else [])
+        monkeypatch.setattr(
+            common.event_accumulator,
+            "EventAccumulator",
+            lambda event_file, size_guidance: acc,
+        )
+
+        result = read_tb_logs_as_list(
+            str(tmp_path), index=0, train_iters=5, start_idx=1, step_size=5
+        )
+        assert result["lm loss"].values[1] == 1.0
+
 
 class TestCollectTrainTestMetrics:
     def test_filters_metrics_and_writes_output(self, monkeypatch, tmp_path):
