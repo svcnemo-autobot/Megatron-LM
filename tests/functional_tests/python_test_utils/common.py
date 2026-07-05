@@ -191,12 +191,11 @@ def read_tb_logs_as_list(
 def read_golden_values_from_json(
     golden_values_path: Union[str, pathlib.Path]
 ) -> Dict[str, GoldenValueMetric]:
-    with open(golden_values_path) as f:
-        if os.path.exists(golden_values_path):
-            with open(golden_values_path) as f:
-                return GoldenValues(**json.load(f)).root
-
+    if not os.path.exists(golden_values_path):
         raise ValueError(f"File {golden_values_path} not found!")
+
+    with open(golden_values_path) as f:
+        return GoldenValues(**json.load(f)).root
 
 
 def _filter_checks(
