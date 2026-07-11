@@ -32,7 +32,7 @@ jobs:
           echo "sha=$(gh pr view $PR_NUMBER --repo $REPO --json headRefOid -q .headRefOid)" | tee -a $GITHUB_OUTPUT
 
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 1
           ref: ${{ steps.get-pr-head-commit.outputs.sha }}
@@ -44,7 +44,7 @@ jobs:
             -f content='eyes'
 
       - name: Run Claude Light Review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@e90deca47693f9457b72f2b53c17d7c445a87342 # v1
         env:
           ANTHROPIC_BASE_URL: ${{ secrets.NVIDIA_INFERENCE_URL }}
           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
@@ -132,7 +132,7 @@ jobs:
           echo "base_ref=$(echo $PR_DATA | jq -r .baseRefName)" >> $GITHUB_OUTPUT
 
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 1
           ref: ${{ steps.pr-info.outputs.sha }}
@@ -147,7 +147,7 @@ jobs:
             -f content='eyes'
 
       - name: Run Claude Strict Review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@e90deca47693f9457b72f2b53c17d7c445a87342 # v1
         env:
           ANTHROPIC_BASE_URL: ${{ secrets.NVIDIA_INFERENCE_URL }}
           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
