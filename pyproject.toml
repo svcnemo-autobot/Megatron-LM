@@ -187,6 +187,7 @@ conflicts = [[{ extra = "lts" }, { extra = "dev" }]]
 # For instance, when installing into a PyTorch base image, we don't want to install torch, 
 # torchvision, and triton.
 override-dependencies = [
+    "mcp>=1.15,<2",  # TODO: remove when nvidia-resiliency-ext supports MCP 2.x.
     "torch; sys_platform == 'never'",
     "torchvision; sys_platform == 'never'",
     "triton; sys_platform == 'never'",
