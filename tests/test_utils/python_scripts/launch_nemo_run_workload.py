@@ -168,6 +168,16 @@ def main(
     if hf_home:
         artifacts.append(f"{pathlib.Path(hf_home)}:/mnt/hf_home")
 
+    trace_environment = (
+        {
+            "MCORE_IMPACT_REPO": "/opt/megatron-lm",
+            "MCORE_IMPACT_TRACE_DIR": "/opt/megatron-lm/assets_dir/impact-traces",
+            "PYTHONPATH": "/opt/megatron-lm/tests/test_utils/import_trace_hook:/opt/megatron-lm",
+        }
+        if not enable_lightweight_mode
+        else {"MCORE_IMPACT_TRACE_DIR": ""}
+    )
+
     executor = run.DockerExecutor(
         container_image=container_image,
         num_gpus=-1,
@@ -186,6 +196,7 @@ def main(
             "NCCL_DEBUG_FILE": "/opt/megatron-lm/assets_dir/logs/nccl_debug.log",
             "HF_HOME": "/mnt/hf_home",
             "TRANSFORMERS_OFFLINE": "1",
+            **trace_environment,
         },
         packager=run.Packager(),
         volumes=artifacts,

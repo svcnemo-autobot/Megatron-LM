@@ -171,8 +171,14 @@ fi
 # Extract training params
 PARAMS=("${PARAMS[@]}" "${TRAINING_PARAMS_ARRAY[@]}")
 
-# Set PYTHONPATH
-export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
+# Set PYTHONPATH. Full CI runs can prepend a sitecustomize hook that records
+# repository modules imported by each training rank for the impact index.
+if [[ -n "${MCORE_IMPACT_TRACE_DIR:-}" ]]; then
+    export MCORE_IMPACT_REPO="$(pwd)"
+    export PYTHONPATH="$(pwd)/tests/test_utils/import_trace_hook:$(pwd):${PYTHONPATH:-}"
+else
+    export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
+fi
 set +x
 export WANDB_API_KEY="${WANDB_API_KEY:-}"
 set -x

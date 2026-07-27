@@ -149,6 +149,9 @@ jobs:
       dev:            ${{ steps.configure.outputs.dev }}
       cadence:        ${{ steps.configure.outputs.cadence }}
       cadence_bypass: ${{ steps.configure.outputs.cadence_bypass }}
+      base_sha:       ${{ steps.configure.outputs.base_sha }}
+      selective:      ${{ steps.configure.outputs.selective }}
+      selection_reason: ${{ steps.configure.outputs.selection_reason }}
       sha:            ${{ steps.resolve-sha.outputs.sha }}
     steps:
       - name: Get PR info
@@ -255,6 +258,19 @@ jobs:
 
           DEV=true
 
+          BASE_SHA='${{ fromJSON(steps.get-pr-info.outputs.pr-info || '{}').base.sha || github.sha }}'
+          SELECTIVE=false
+          SELECTION_REASON="non-PR or explicit full-suite override"
+          IS_PR_PUSH='${{ startsWith(github.ref, 'refs/heads/pull-request/') && github.event_name == 'push' }}'
+          if [ "$IS_PR_PUSH" == "true" ] \
+            && [ "$HAS_RUN_TESTS" != "true" ] \
+            && [ "$HAS_RUN_FUNCTIONAL" != "true" ] \
+            && [ "$HAS_LTS" != "true" ] \
+            && [ "$IS_CI_WORKLOAD" != "true" ]; then
+            SELECTIVE=true
+            SELECTION_REASON="ordinary PR push"
+          fi
+
           echo "scope=$SCOPE"                   | tee -a $GITHUB_OUTPUT
           echo "n_repeat=$N_REPEAT"             | tee -a $GITHUB_OUTPUT
           echo "lightweight=$LIGHTWEIGHT"       | tee -a $GITHUB_OUTPUT
@@ -264,6 +280,9 @@ jobs:
           echo "dev=$DEV"                       | tee -a $GITHUB_OUTPUT
           echo "cadence=$CADENCE_OUTPUT"        | tee -a $GITHUB_OUTPUT
           echo "cadence_bypass=$CADENCE_BYPASS" | tee -a $GITHUB_OUTPUT
+          echo "base_sha=$BASE_SHA"             | tee -a $GITHUB_OUTPUT
+          echo "selective=$SELECTIVE"           | tee -a $GITHUB_OUTPUT
+          echo "selection_reason=$SELECTION_REASON" | tee -a $GITHUB_OUTPUT
 
           # Pre-compute active row markers for the decision tree
           _MG=$( [ "$IS_MERGE_GROUP" == "true" ]                                                                           && echo "**→**" || echo "" )
@@ -668,18 +687,96 @@ jobs:
           secrets: |
             GH_TOKEN=${{ secrets.PAT }}
 
+  cicd-select-tests:
+    runs-on: ubuntu-latest
+    needs: [pre-flight, configure]
+    if: |
+      needs.pre-flight.result != 'cancelled'
+      && needs.configure.result != 'cancelled'
+      && !cancelled()
+    outputs:
+      selection: ${{ steps.select.outputs.selection }}
+      mode: ${{ steps.select.outputs.mode }}
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.configure.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Download latest impact index
+        if: needs.configure.outputs.selective == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ci-impact-index
+          RUN_ID=$(gh run list --workflow cicd-main.yml --branch main --event schedule \
+            --status success --limit 20 --json databaseId \
+            --jq '.[].databaseId' | while read -r run_id; do
+              if gh api "repos/${{ github.repository }}/actions/runs/${run_id}/artifacts" \
+                --jq '.artifacts[] | select(.name | startswith("ci-impact-index-")) | .id' | grep -q .; then
+                echo "$run_id"
+                break
+              fi
+            done)
+          if [ -n "$RUN_ID" ]; then
+            ARTIFACT_NAME=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}/artifacts" \
+              --jq '.artifacts[] | select(.name | startswith("ci-impact-index-")) | .name' | head -1)
+            gh run download "$RUN_ID" --name "$ARTIFACT_NAME" --dir ci-impact-index
+          else
+            echo "No successful impact index found; selector will fail closed."
+          fi
+
+      - name: Select affected tests
+        id: select
+        env:
+          SELECTIVE: ${{ needs.configure.outputs.selective }}
+          SELECTION_REASON: ${{ needs.configure.outputs.selection_reason }}
+          BASE_SHA: ${{ needs.configure.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.configure.outputs.sha }}
+        run: |
+          ARGS=()
+          if [ "$SELECTIVE" != "true" ]; then
+            ARGS+=(--force-full "$SELECTION_REASON")
+          fi
+          python tests/test_utils/python_scripts/ci_impact.py select \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA" \
+            --index ci-impact-index/impact-index.json \
+            --output selection.json \
+            "${ARGS[@]}"
+          echo "selection=$(jq -c . selection.json)" | tee -a "$GITHUB_OUTPUT"
+          echo "mode=$(jq -r .mode selection.json)" | tee -a "$GITHUB_OUTPUT"
+          {
+            echo "### Selective CI"
+            echo
+            echo "- Mode: \`$(jq -r .mode selection.json)\`"
+            echo "- Reason: $(jq -r .reason selection.json)"
+            echo "- Changed paths: $(jq '.changed_paths | length' selection.json)"
+            echo
+            echo '| Matrix | Mode | Selected owners |'
+            echo '|---|---|---:|'
+            jq -r '.categories | to_entries[] | "| `\(.key)` | `\(.value.mode)` | \(.value.owners | length) |"' selection.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
   cicd-parse-unit-tests:
     runs-on: ubuntu-latest
     outputs:
       unit-tests: ${{ steps.parse-unit-tests.outputs.unit-tests }}
+      has-tests: ${{ steps.parse-unit-tests.outputs.has-tests }}
     needs:
       - pre-flight
       - configure
+      - cicd-select-tests
       - cicd-wait-in-queue
       - cicd-container-build
     if: |
       needs.pre-flight.result != 'cancelled'
       && needs.configure.result != 'cancelled'
+      && needs.cicd-select-tests.result != 'cancelled'
       && needs.cicd-wait-in-queue.result != 'cancelled'
       && needs.cicd-container-build.result != 'cancelled'
       && (
@@ -696,9 +793,18 @@ jobs:
           ref: ${{ needs.configure.outputs.sha }}
       - name: Parse unit tests
         id: parse-unit-tests
+        env:
+          SELECTION: ${{ needs.cicd-select-tests.outputs.selection }}
         run: |
-          cat tests/test_utils/recipes/h100/unit-tests.yaml | yq -o json '[.products[].test_case[] | { "bucket": .}] | sort_by(.model, .test_case)' | jq -c > unit-tests.json
-          echo "unit-tests=$(cat unit-tests.json)" | tee -a $GITHUB_OUTPUT
+          cat tests/test_utils/recipes/h100/unit-tests.yaml | yq -o json '[.products[].test_case[] | { "bucket": .}] | sort_by(.bucket)' | jq -c > unit-tests-candidates.json
+          printf '%s\n' "$SELECTION" > selection.json
+          python tests/test_utils/python_scripts/ci_impact.py filter-matrix \
+            --selection selection.json \
+            --category unit:h100 \
+            --candidates unit-tests-candidates.json \
+            --output unit-tests-filtered.json
+          echo "unit-tests=$(jq -c .matrix unit-tests-filtered.json)" | tee -a "$GITHUB_OUTPUT"
+          echo "has-tests=$(jq -r '.has_tests' unit-tests-filtered.json)" | tee -a "$GITHUB_OUTPUT"
 
   cicd-unit-tests-latest:
     strategy:
@@ -722,6 +828,7 @@ jobs:
       && needs.cicd-wait-in-queue.result != 'cancelled'
       && needs.cicd-container-build.result != 'cancelled'
       && needs.cicd-parse-unit-tests.result != 'cancelled'
+      && needs.cicd-parse-unit-tests.outputs.has-tests == 'true'
       && (
         success()
         || needs.pre-flight.outputs.is_ci_workload == 'true'
@@ -755,15 +862,18 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       unit-tests-gb200: ${{ steps.parse-unit-tests.outputs.unit-tests-gb200 }}
+      has-tests: ${{ steps.parse-unit-tests.outputs.has-tests }}
     needs:
       - is-not-external-contributor
       - pre-flight
       - configure
+      - cicd-select-tests
       - cicd-wait-in-queue
       - cicd-container-build
     if: |
       needs.pre-flight.result != 'cancelled'
       && needs.configure.result != 'cancelled'
+      && needs.cicd-select-tests.result != 'cancelled'
       && needs.cicd-wait-in-queue.result != 'cancelled'
       && needs.cicd-container-build.result != 'cancelled'
       && needs.is-not-external-contributor.outputs.is_maintainer == 'true'
@@ -782,9 +892,18 @@ jobs:
           ref: ${{ needs.configure.outputs.sha }}
       - name: Parse unit tests
         id: parse-unit-tests
+        env:
+          SELECTION: ${{ needs.cicd-select-tests.outputs.selection }}
         run: |
-          cat tests/test_utils/recipes/gb200/unit-tests.yaml | yq -o json '[.products[].test_case[] | { "bucket": .}] | sort_by(.model, .test_case)' | jq -c > unit-tests-gb200.json
-          echo "unit-tests-gb200=$(cat unit-tests-gb200.json)" | tee -a $GITHUB_OUTPUT
+          cat tests/test_utils/recipes/gb200/unit-tests.yaml | yq -o json '[.products[].test_case[] | { "bucket": .}] | sort_by(.bucket)' | jq -c > unit-tests-gb200-candidates.json
+          printf '%s\n' "$SELECTION" > selection.json
+          python tests/test_utils/python_scripts/ci_impact.py filter-matrix \
+            --selection selection.json \
+            --category unit:gb200 \
+            --candidates unit-tests-gb200-candidates.json \
+            --output unit-tests-gb200-filtered.json
+          echo "unit-tests-gb200=$(jq -c .matrix unit-tests-gb200-filtered.json)" | tee -a "$GITHUB_OUTPUT"
+          echo "has-tests=$(jq -r '.has_tests' unit-tests-gb200-filtered.json)" | tee -a "$GITHUB_OUTPUT"
 
   cicd-unit-tests-latest-gb200:
     strategy:
@@ -808,6 +927,7 @@ jobs:
       && needs.cicd-wait-in-queue.result != 'cancelled'
       && needs.cicd-container-build.result != 'cancelled'
       && needs.cicd-parse-unit-tests-gb200.result == 'success'
+      && needs.cicd-parse-unit-tests-gb200.outputs.has-tests == 'true'
       && needs.is-not-external-contributor.outputs.is_maintainer == 'true'
       && vars.ENABLE_GB200_TESTING == 'true'
       && (
@@ -858,6 +978,7 @@ jobs:
       - configure
       - cicd-wait-in-queue
       - cicd-container-build
+      - cicd-parse-unit-tests
       - cicd-unit-tests-latest
     if: |
       needs.pre-flight.result != 'cancelled'
@@ -873,6 +994,7 @@ jobs:
         env:
           WAIT_RESULT: ${{ needs.cicd-wait-in-queue.result }}
           UNIT_RESULT: ${{ needs.cicd-unit-tests-latest.result }}
+          UNIT_HAS_TESTS: ${{ needs.cicd-parse-unit-tests.outputs.has-tests }}
           IS_MERGE_GROUP: ${{ needs.pre-flight.outputs.is_merge_group }}
           IS_CI_WORKLOAD: ${{ needs.pre-flight.outputs.is_ci_workload }}
           FORCE_RUN_ALL: ${{ needs.pre-flight.outputs.force_run_all }}
@@ -889,6 +1011,7 @@ jobs:
           # (B) Unit-test gate
           unit=false
           if [ "$UNIT_RESULT" = "success" ] \
+             || [ "$UNIT_HAS_TESTS" = "false" ] \
              || [ "$IS_CI_WORKLOAD" = "true" ] \
              || [ "$FORCE_RUN_ALL" = "true" ]; then
             unit=true
@@ -908,12 +1031,14 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - configure
+      - cicd-select-tests
       - cicd-integration-gate
     if: |
       !cancelled()
       && needs.cicd-integration-gate.outputs.should_run == 'true'
     outputs:
       integration-tests-h100: ${{ steps.main.outputs.integration-tests-h100 }}
+      has-tests: ${{ steps.main.outputs.has-tests }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -926,6 +1051,7 @@ jobs:
           SCOPE: ${{ needs.configure.outputs.scope }}
           LIGHTWEIGHT: ${{ needs.configure.outputs.lightweight }}
           CADENCE: ${{ needs.configure.outputs.cadence }}
+          SELECTION: ${{ needs.cicd-select-tests.outputs.selection }}
         run: |
           export PYTHONPATH=$(pwd)
 
@@ -952,9 +1078,15 @@ jobs:
             --output-path integration-tests-h100.yaml
 
           cat integration-tests-h100.yaml | \
-            yq -o json 'del(.default, .stages, .workflow) | to_entries | map({"model": .value.stage, "test_case": .key}) | sort_by(.model, .test_case)' | jq -c  > integration-tests-h100.json
-
-          echo "integration-tests-h100=$(cat integration-tests-h100.json)" | tee -a "$GITHUB_OUTPUT"
+            yq -o json 'del(.default, .stages, .workflow) | to_entries | map({"model": .value.stage, "test_case": .key}) | sort_by(.model, .test_case)' | jq -c > integration-tests-h100-candidates.json
+          printf '%s\n' "$SELECTION" > selection.json
+          python tests/test_utils/python_scripts/ci_impact.py filter-matrix \
+            --selection selection.json \
+            --category functional:h100 \
+            --candidates integration-tests-h100-candidates.json \
+            --output integration-tests-h100-filtered.json
+          echo "integration-tests-h100=$(jq -c .matrix integration-tests-h100-filtered.json)" | tee -a "$GITHUB_OUTPUT"
+          echo "has-tests=$(jq -r '.has_tests' integration-tests-h100-filtered.json)" | tee -a "$GITHUB_OUTPUT"
 
   cicd-integration-tests-latest-h100:
     timeout-minutes: 60
@@ -979,6 +1111,7 @@ jobs:
       !cancelled()
       && needs.cicd-integration-gate.outputs.should_run == 'true'
       && needs.cicd-parse-integration-tests-h100.result == 'success'
+      && needs.cicd-parse-integration-tests-h100.outputs.has-tests == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -1005,6 +1138,7 @@ jobs:
     needs:
       - is-not-external-contributor
       - configure
+      - cicd-select-tests
       - cicd-integration-gate
     if: |
       !cancelled()
@@ -1013,6 +1147,7 @@ jobs:
       && vars.ENABLE_GB200_TESTING == 'true'
     outputs:
       integration-tests-gb200: ${{ steps.main.outputs.integration-tests-gb200 }}
+      has-tests: ${{ steps.main.outputs.has-tests }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -1025,6 +1160,7 @@ jobs:
           SCOPE: ${{ needs.configure.outputs.scope }}
           LIGHTWEIGHT: ${{ needs.configure.outputs.lightweight }}
           CADENCE: ${{ needs.configure.outputs.cadence }}
+          SELECTION: ${{ needs.cicd-select-tests.outputs.selection }}
         run: |
           export PYTHONPATH=$(pwd)
 
@@ -1051,9 +1187,15 @@ jobs:
             --output-path integration-tests-gb200.yaml
 
           cat integration-tests-gb200.yaml | \
-            yq -o json 'del(.default, .stages, .workflow) | to_entries | map({"model": .value.stage, "test_case": .key}) | sort_by(.model, .test_case)' | jq -c  > integration-tests-gb200.json
-
-          echo "integration-tests-gb200=$(cat integration-tests-gb200.json)" | tee -a "$GITHUB_OUTPUT"
+            yq -o json 'del(.default, .stages, .workflow) | to_entries | map({"model": .value.stage, "test_case": .key}) | sort_by(.model, .test_case)' | jq -c > integration-tests-gb200-candidates.json
+          printf '%s\n' "$SELECTION" > selection.json
+          python tests/test_utils/python_scripts/ci_impact.py filter-matrix \
+            --selection selection.json \
+            --category functional:gb200 \
+            --candidates integration-tests-gb200-candidates.json \
+            --output integration-tests-gb200-filtered.json
+          echo "integration-tests-gb200=$(jq -c .matrix integration-tests-gb200-filtered.json)" | tee -a "$GITHUB_OUTPUT"
+          echo "has-tests=$(jq -r '.has_tests' integration-tests-gb200-filtered.json)" | tee -a "$GITHUB_OUTPUT"
 
   cicd-integration-tests-latest-gb200:
     timeout-minutes: 60
@@ -1078,6 +1220,7 @@ jobs:
       !cancelled()
       && needs.cicd-integration-gate.outputs.should_run == 'true'
       && needs.cicd-parse-integration-tests-gb200.result == 'success'
+      && needs.cicd-parse-integration-tests-gb200.outputs.has-tests == 'true'
       && needs.is-not-external-contributor.outputs.is_maintainer == 'true'
       && vars.ENABLE_GB200_TESTING == 'true'
     steps:
@@ -1106,9 +1249,14 @@ jobs:
     needs:
       - pre-flight
       - is-not-external-contributor
+      - cicd-select-tests
+      - cicd-parse-unit-tests
       - cicd-unit-tests-latest
+      - cicd-parse-unit-tests-gb200
       - cicd-unit-tests-latest-gb200
+      - cicd-parse-integration-tests-h100
       - cicd-integration-tests-latest-h100
+      - cicd-parse-integration-tests-gb200
       - cicd-integration-tests-latest-gb200
     if: |
       (
@@ -1139,9 +1287,13 @@ jobs:
           FORCE_RUN_ALL: ${{ needs.pre-flight.outputs.force_run_all }}
           ENABLE_GB200_TESTING: ${{ vars.ENABLE_GB200_TESTING }}
           UNIT_RESULT: ${{ needs.cicd-unit-tests-latest.result }}
+          UNIT_HAS_TESTS: ${{ needs.cicd-parse-unit-tests.outputs.has-tests }}
           UNIT_GB200_RESULT: ${{ needs.cicd-unit-tests-latest-gb200.result }}
+          UNIT_GB200_HAS_TESTS: ${{ needs.cicd-parse-unit-tests-gb200.outputs.has-tests }}
           H100_RESULT: ${{ needs.cicd-integration-tests-latest-h100.result }}
+          H100_HAS_TESTS: ${{ needs.cicd-parse-integration-tests-h100.outputs.has-tests }}
           GB200_RESULT: ${{ needs.cicd-integration-tests-latest-gb200.result }}
+          GB200_HAS_TESTS: ${{ needs.cicd-parse-integration-tests-gb200.outputs.has-tests }}
         run: |
           # Docs-only and deployment workflows intentionally skip all tests
           if [ "$DOCS_ONLY" == "true" ] || [ "$IS_DEPLOYMENT" == "true" ]; then
@@ -1159,7 +1311,7 @@ jobs:
             FORCE_INTEGRATION=true
           fi
 
-          if [ "$UNIT_RESULT" != "success" ]; then
+          if [ "$UNIT_RESULT" != "success" ] && [ "$UNIT_HAS_TESTS" != "false" ]; then
             echo "❌ cicd-unit-tests-latest: $UNIT_RESULT"
             FAILED=true
             # On PR-push / merge_group, integration was skipped by design —
@@ -1170,7 +1322,9 @@ jobs:
             fi
           fi
 
-          if [ "$H100_RESULT" != "success" ] && [ "$H100_RESULT" != "skipped-by-unit-failure" ]; then
+          if [ "$H100_RESULT" != "success" ] \
+            && [ "$H100_RESULT" != "skipped-by-unit-failure" ] \
+            && [ "$H100_HAS_TESTS" != "false" ]; then
             echo "❌ cicd-integration-tests-latest-h100: $H100_RESULT"
             FAILED=true
           fi
@@ -1179,11 +1333,15 @@ jobs:
           if [ "$ENABLE_GB200_TESTING" == "true" ]; then
             # GB200 tests may be skipped only for non-maintainer PRs
             # (no GB200 runners available); maintainer runs must always succeed.
-            if [ "$GB200_RESULT" == "skipped" ] && [ "$IS_MAINTAINER" == "true" ]; then
+            if [ "$GB200_RESULT" == "skipped" ] \
+              && [ "$GB200_HAS_TESTS" != "false" ] \
+              && [ "$IS_MAINTAINER" == "true" ]; then
               echo "❌ cicd-integration-tests-latest-gb200: skipped unexpectedly for a maintainer run"
               FAILED=true
             fi
-            if [ "$UNIT_GB200_RESULT" == "skipped" ] && [ "$IS_MAINTAINER" == "true" ]; then
+            if [ "$UNIT_GB200_RESULT" == "skipped" ] \
+              && [ "$UNIT_GB200_HAS_TESTS" != "false" ] \
+              && [ "$IS_MAINTAINER" == "true" ]; then
               echo "❌ cicd-unit-tests-latest-gb200: skipped unexpectedly for a maintainer run"
               FAILED=true
             fi
@@ -1223,11 +1381,13 @@ jobs:
 
   Coverage_Fake:
     runs-on: ubuntu-latest
-    needs: [Nemo_CICD_Test, pre-flight]
+    needs: [Nemo_CICD_Test, pre-flight, cicd-parse-unit-tests]
     if: |
-      (
+      always()
+      && (
         needs.pre-flight.outputs.docs_only == 'true'
         || needs.pre-flight.outputs.is_deployment_workflow == 'true'
+        || needs.cicd-parse-unit-tests.outputs.has-tests == 'false'
       )
       && needs.pre-flight.outputs.is_ci_workload == 'false'
       && !cancelled()
@@ -1249,7 +1409,7 @@ jobs:
 
   Coverage:
     runs-on: ubuntu-latest
-    needs: [Nemo_CICD_Test]
+    needs: [Nemo_CICD_Test, pre-flight, cicd-parse-unit-tests]
     if: |
       (
         (needs.pre-flight.outputs.is_ci_workload == 'true' && !failure())
@@ -1258,6 +1418,11 @@ jobs:
       )
       && !cancelled()
       && github.repository == 'NVIDIA/Megatron-LM'
+      && (
+        needs.cicd-parse-unit-tests.outputs.has-tests == 'true'
+        || needs.pre-flight.outputs.is_ci_workload == 'true'
+        || needs.pre-flight.outputs.is_merge_group == 'true'
+      )
     strategy:
       matrix:
         flag: [unit-test]
@@ -1306,6 +1471,63 @@ jobs:
           path: |
             .coverage
           include-hidden-files: true
+
+  publish-ci-impact-index:
+    runs-on: ubuntu-latest
+    needs:
+      - configure
+      - Nemo_CICD_Test
+    if: |
+      github.event_name == 'schedule'
+      && needs.Nemo_CICD_Test.result == 'success'
+      && !cancelled()
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.configure.outputs.sha }}
+
+      - name: Download impact evidence
+        uses: actions/download-artifact@v7
+        with:
+          pattern: impact-*
+          path: impact-artifacts
+
+      - name: Install selector dependencies
+        run: pip install pyyaml click
+
+      - name: Generate expected owners
+        run: |
+          export PYTHONPATH=$(pwd)
+          python tests/test_utils/python_scripts/ci_impact_manifest.py \
+            --scope L1 \
+            --cadence nightly \
+            --output expected-impact-owners.json
+
+      - name: Build impact index
+        env:
+          ENABLE_GB200_TESTING: ${{ vars.ENABLE_GB200_TESTING }}
+        run: |
+          REQUIRED=(--required-category unit:h100 --required-category functional:h100)
+          if [ "$ENABLE_GB200_TESTING" == "true" ]; then
+            REQUIRED+=(--required-category unit:gb200 --required-category functional:gb200)
+          fi
+          python tests/test_utils/python_scripts/ci_impact.py build-index \
+            --artifacts impact-artifacts \
+            --expected expected-impact-owners.json \
+            --source-sha '${{ needs.configure.outputs.sha }}' \
+            --output impact-index.json \
+            "${REQUIRED[@]}"
+
+      - name: Publish impact index
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-impact-index-${{ github.run_id }}
+          path: impact-index.json
+          retention-days: 14
 
   merge-queue-notification:
     runs-on: ubuntu-latest

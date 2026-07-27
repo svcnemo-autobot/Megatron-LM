@@ -236,10 +236,25 @@ runs:
         echo "logs_report=$logs_report" | sed 's/\//-/g' | sed 's/\*/-/g' | tee -a "$GITHUB_OUTPUT"
         if [[ "$IS_UNIT_TEST" == "true" ]]; then
           coverage_report=coverage-unit-test-${{ github.run_id }}-$(cat /proc/sys/kernel/random/uuid)
+          impact_kind=unit
+          impact_platform=$([[ "${{ inputs.platform }}" == "dgx_gb200" ]] && echo gb200 || echo h100)
+          impact_owner='${{ inputs.test_case }}'
         else
           coverage_report=none
+          impact_kind=functional
+          impact_platform=$([[ "${{ inputs.platform }}" == "dgx_gb200" ]] && echo gb200 || echo h100)
+          impact_owner='${{ inputs.model }}/${{ inputs.test_case }}'
         fi
         echo "coverage_report=$coverage_report" | tee -a "$GITHUB_OUTPUT"
+        impact_report=impact-${impact_kind}-${impact_platform}-${{ github.run_id }}-$(cat /proc/sys/kernel/random/uuid)
+        echo "impact_report=$impact_report" | tee -a "$GITHUB_OUTPUT"
+        mkdir -p assets_dir/impact
+        python tests/test_utils/python_scripts/ci_impact.py write-metadata \
+          --output assets_dir/impact/impact-metadata.json \
+          --kind "$impact_kind" \
+          --platform "$impact_platform" \
+          --owner "$impact_owner" \
+          --source-sha '${{ inputs.sha }}'
 
         EXIT_CODE="${MAIN_EXIT_CODE:-${MAIN_CONCLUSION}}"
         if [[ "$MAIN_CONCLUSION" == "success" ]]; then
@@ -303,7 +318,20 @@ runs:
         path: |
           coverage.xml
           .coverage
+          assets_dir/coverage_report
         include-hidden-files: true
+
+    - name: Upload impact evidence
+      uses: actions/upload-artifact@v6
+      if: ${{ always() && steps.run-main-script.conclusion == 'success' }}
+      with:
+        name: ${{ steps.check.outputs.impact_report }}
+        path: |
+          assets_dir/impact/impact-metadata.json
+          assets_dir/coverage_report
+          assets_dir/impact-traces/
+        include-hidden-files: true
+        retention-days: 14
 
     - name: Upload logs
       id: upload-logs
