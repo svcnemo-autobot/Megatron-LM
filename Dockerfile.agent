@@ -1,3 +1,6 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+ARG FROM_IMAGE_NAME=nvcr.io/nvidia/pytorch:26.06-py3
+FROM ${FROM_IMAGE_NAME}
+ARG UV_VERSION=0.7.2
+ENV PATH="/root/.local/bin:${PATH}"
+RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | sh
 CMD ["sleep", "infinity"]
