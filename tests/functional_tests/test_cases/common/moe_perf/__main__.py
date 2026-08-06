@@ -19,9 +19,9 @@ from megatron.core.fp8_utils import get_fp8_context
 from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_layer_with_transformer_engine_submodules,
 )
+from megatron.core.tensor_parallel import get_cuda_rng_tracker, get_expert_parallel_rng_tracker_name
 from megatron.core.transformer.moe.fused_a2a import HAVE_DEEP_EP, HAVE_HYBRIDEP
 from megatron.core.transformer.moe.moe_layer import MoELayer, MoESubmodules
-from megatron.core.transformer.moe.moe_utils import RandomSTE
 from megatron.core.transformer.spec_utils import get_submodules
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import nvtx_range_pop, nvtx_range_push
@@ -183,6 +183,14 @@ def _benchmark_moe_layer(layer: MoELayer, case: MoEPerformanceCase):
     torch.cuda.synchronize()
     set_experimental_flag(True)
 
+    rng_tracker = get_cuda_rng_tracker()
+    expert_rng_name = get_expert_parallel_rng_tracker_name()
+    initial_expert_rng_state = rng_tracker.get_states()[expert_rng_name]
+    if isinstance(initial_expert_rng_state, torch.Generator):
+        initial_expert_rng_state = initial_expert_rng_state.clone_state()
+    else:
+        initial_expert_rng_state = initial_expert_rng_state.clone()
+
     forward_timings = []
     backward_timings = []
     max_allocated_bytes = []
@@ -207,8 +215,12 @@ def _benchmark_moe_layer(layer: MoELayer, case: MoEPerformanceCase):
     )
     input_tensor.requires_grad_(True)
     for iteration in range(WARMUP_ITERS + MEASURE_ITERS):
-        if RandomSTE.generator is not None:
-            RandomSTE.generator.manual_seed(RandomSTE.generator.initial_seed())
+        rng_states = rng_tracker.get_states()
+        if isinstance(initial_expert_rng_state, torch.Generator):
+            rng_states[expert_rng_name] = initial_expert_rng_state.clone_state()
+        else:
+            rng_states[expert_rng_name] = initial_expert_rng_state.clone()
+        rng_tracker.set_states(rng_states)
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             torch.distributed.barrier()
         nvtx_iter_msg = f"({case.name}) iteration {iteration}"
