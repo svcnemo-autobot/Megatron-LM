@@ -72,40 +72,32 @@ def test_stopped_monitor_does_not_cancel_attempt():
     experiment.cancel.assert_not_called()
 
 
-def test_render_workload_script_rebases_current_checkout_only():
-    script = 'cd /opt/megatron-lm\nTEST_PATH="/opt/megatron-lm"\nLEGACY=/opt/megatron-lm-legacy\nLOG={assets_dir}'
+def test_resolve_docker_workspace_uses_current_checkout_and_image_user(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
 
-    rendered = launch_nemo_run_workload._render_workload_script(
-        script, {"assets_dir": "/workspace/megatron/assets_dir"}, pathlib.PurePosixPath("/workspace/megatron")
-    )
-
-    assert rendered == (
-        "cd /workspace/megatron\n"
-        'TEST_PATH="/workspace/megatron"\n'
-        "LEGACY=/opt/megatron-lm-legacy\n"
-        "LOG=/workspace/megatron/assets_dir"
-    )
-
-
-def test_resolve_docker_workspace_uses_custom_paths_and_image_user(tmp_path):
-    workspace, docker_kwargs = launch_nemo_run_workload._resolve_docker_workspace(
-        tmp_path, "/workspace/megatron", None
-    )
+    workspace, docker_kwargs = launch_nemo_run_workload._resolve_docker_workspace(tmp_path, None)
 
     assert workspace.host_root == tmp_path.resolve()
-    assert workspace.container_root == pathlib.PurePosixPath("/workspace/megatron")
-    assert workspace.assets_dir == pathlib.PurePosixPath("/workspace/megatron/assets_dir")
-    assert workspace.artifacts_dir == pathlib.PurePosixPath("/workspace/megatron/artifacts_dir")
+    assert workspace.container_root == pathlib.PurePosixPath("/opt/megatron-lm")
+    assert workspace.assets_dir == pathlib.PurePosixPath("/opt/megatron-lm/assets_dir")
+    assert workspace.artifacts_dir == pathlib.PurePosixPath("/opt/megatron-lm/artifacts_dir")
     assert docker_kwargs == {}
 
 
-def test_resolve_docker_workspace_sets_explicit_user(tmp_path):
-    _, docker_kwargs = launch_nemo_run_workload._resolve_docker_workspace(tmp_path, "/opt/megatron-lm", "1000:1000")
+def test_resolve_docker_workspace_sets_explicit_user(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    _, docker_kwargs = launch_nemo_run_workload._resolve_docker_workspace(tmp_path, "1000:1000")
 
     assert docker_kwargs == {"user": "1000:1000"}
 
 
-@pytest.mark.parametrize("container_root", ["opt/megatron-lm", "/opt/../root"])
-def test_resolve_docker_workspace_rejects_invalid_container_root(tmp_path, container_root):
-    with pytest.raises(click.BadParameter, match="absolute normalized path"):
-        launch_nemo_run_workload._resolve_docker_workspace(tmp_path, container_root, None)
+def test_resolve_docker_workspace_rejects_another_host_directory(tmp_path, monkeypatch):
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+    monkeypatch.chdir(checkout)
+
+    with pytest.raises(click.BadParameter, match="must match the current repository"):
+        launch_nemo_run_workload._resolve_docker_workspace(other, None)
