@@ -123,7 +123,15 @@ RUN bash -ex <<"EOF"
     rm -rf DeepEP
 EOF
 
-COPY assets/ /opt/data/
+# The GitHub workflow materializes this directory before its Docker build. The
+# isolated validation builder starts from a clean clone, so prepare the same
+# public release assets inside this temporary validation image instead.
+COPY tests/test_utils/python_scripts/download_unit_tests_dataset.py /tmp/download_unit_tests_dataset.py
+RUN for attempt in 1 2 3; do \
+        python /tmp/download_unit_tests_dataset.py --assets-dir /opt/data && break; \
+        test "$attempt" -lt 3 || exit 1; \
+        sleep 10; \
+    done && rm /tmp/download_unit_tests_dataset.py
 ENV UV_PYTHON=$UV_PROJECT_ENVIRONMENT/bin/python
 
 ##### For NVIDIANS only #####
