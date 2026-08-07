@@ -25,14 +25,12 @@ ASSETS = [
     {
         "name": "datasets.zip",
         "url": "https://github.com/NVIDIA/Megatron-LM/releases/download/v2.5/datasets.zip",
-        # DevSkim: ignore DS173237 -- public SHA-256 integrity digest, not a credential.
-        "sha256": "2dda736d6daa6ed32c5f866aec7e7915c380e353cd39b05ba2dcb13039225661",
+        "sha256": "2dda736d6daa6ed32c5f866aec7e7915c380e353cd39b05ba2dcb13039225661",  # DevSkim: ignore DS173237 -- public integrity digest
     },
     {
         "name": "tokenizers.zip",
         "url": "https://github.com/NVIDIA/Megatron-LM/releases/download/v2.5/tokenizers.zip",
-        # DevSkim: ignore DS173237 -- public SHA-256 integrity digest, not a credential.
-        "sha256": "e58ed690b48958e31e3b1453a9bccb592cf4bb7a3b3ac3938da13dd52d694f9c",
+        "sha256": "e58ed690b48958e31e3b1453a9bccb592cf4bb7a3b3ac3938da13dd52d694f9c",  # DevSkim: ignore DS173237 -- public integrity digest
     },
 ]
 
