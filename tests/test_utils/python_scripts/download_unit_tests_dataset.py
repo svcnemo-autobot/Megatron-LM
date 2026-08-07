@@ -5,6 +5,7 @@
 Populate unit-test data from staged or public NVIDIA/Megatron-LM v2.5 release assets.
 """
 
+import hashlib
 import logging
 import os
 import tarfile
@@ -24,10 +25,12 @@ ASSETS = [
     {
         "name": "datasets.zip",
         "url": "https://github.com/NVIDIA/Megatron-LM/releases/download/v2.5/datasets.zip",
+        "sha256": "2dda736d6daa6ed32c5f866aec7e7915c380e353cd39b05ba2dcb13039225661",
     },
     {
         "name": "tokenizers.zip",
         "url": "https://github.com/NVIDIA/Megatron-LM/releases/download/v2.5/tokenizers.zip",
+        "sha256": "e58ed690b48958e31e3b1453a9bccb592cf4bb7a3b3ac3938da13dd52d694f9c",
     },
 ]
 
@@ -60,9 +63,7 @@ def extract_asset(asset_path: Path, assets_dir: Path) -> bool:
             with tarfile.open(asset_path, 'r') as tar_ref:
                 tar_ref.extractall(assets_dir)
         else:
-            logger.warning(
-                f"  Warning: Unknown file type for {asset_path.name}, skipping extraction"
-            )
+            logger.warning(f"  Warning: Unknown file type for {asset_path.name}, skipping extraction")
             return False
 
         logger.info(f"  Successfully extracted to {assets_dir}")
@@ -80,10 +81,27 @@ def extract_staged_release_assets(assets_dir: Path) -> bool:
         return False
 
     logger.info(f"Using staged release assets from {staged_dir}")
-    return all(extract_asset(asset_path, assets_dir) for asset_path in staged_assets)
+    return all(
+        verify_asset(asset_path, asset["sha256"]) and extract_asset(asset_path, assets_dir)
+        for asset, asset_path in zip(ASSETS, staged_assets)
+    )
 
 
-def download_release_asset(asset_url: str, asset_name: str, assets_dir: Path) -> bool:
+def verify_asset(asset_path: Path, expected_sha256: str) -> bool:
+    """Verify a release asset against its pinned SHA-256 digest."""
+    digest = hashlib.sha256()
+    with asset_path.open("rb") as asset_file:
+        for chunk in iter(lambda: asset_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+
+    actual_sha256 = digest.hexdigest()
+    if actual_sha256 != expected_sha256:
+        logger.error("  SHA-256 mismatch for %s: expected %s, got %s", asset_path.name, expected_sha256, actual_sha256)
+        return False
+    return True
+
+
+def download_release_asset(asset_url: str, asset_name: str, expected_sha256: str, assets_dir: Path) -> bool:
     """Download and extract one public GitHub release asset."""
     temp_file = assets_dir / asset_name
     try:
@@ -95,7 +113,7 @@ def download_release_asset(asset_url: str, asset_name: str, assets_dir: Path) ->
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-        return extract_asset(temp_file, assets_dir)
+        return verify_asset(temp_file, expected_sha256) and extract_asset(temp_file, assets_dir)
     except Exception as e:
         logger.error(f"  Error downloading/extracting {asset_name}: {e}")
         return False
@@ -110,13 +128,11 @@ def download_and_extract_asset(assets_dir: Path) -> bool:
     if extract_staged_release_assets(assets_dir):
         return True
 
-    return all(download_release_asset(asset["url"], asset["name"], assets_dir) for asset in ASSETS)
+    return all(download_release_asset(asset["url"], asset["name"], asset["sha256"], assets_dir) for asset in ASSETS)
 
 
 @click.command()
-@click.option(
-    '--repo', default='NVIDIA/Megatron-LM', help='GitHub repository name (format: owner/repo)'
-)
+@click.option('--repo', default='NVIDIA/Megatron-LM', help='GitHub repository name (format: owner/repo)')
 @click.option('--assets-dir', default='assets', help='Directory to extract assets to')
 def main(repo, assets_dir):
     """Populate unit-test data from staged or public release assets."""

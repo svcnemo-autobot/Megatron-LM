@@ -1,5 +1,6 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
+import hashlib
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, call
@@ -21,7 +22,9 @@ def test_download_and_extract_asset_prefers_staged_assets(monkeypatch, tmp_path)
     staged_dir.mkdir(parents=True)
     for asset in download_unit_tests_dataset.ASSETS:
         asset_path = staged_dir / asset["name"]
-        asset_path.write_bytes(_archive_bytes(asset_path.stem, asset_path.name))
+        archive = _archive_bytes(asset_path.stem, asset_path.name)
+        monkeypatch.setitem(asset, "sha256", hashlib.sha256(archive).hexdigest())
+        asset_path.write_bytes(archive)
 
     monkeypatch.setenv(download_unit_tests_dataset.TEST_DATA_ROOT_ENV, str(staged_root))
     get = MagicMock(side_effect=AssertionError("GitHub fallback should not be used"))
@@ -39,6 +42,8 @@ def test_download_and_extract_asset_falls_back_without_github_token(monkeypatch,
         asset["url"]: _archive_bytes(Path(asset["name"]).stem, asset["name"])
         for asset in download_unit_tests_dataset.ASSETS
     }
+    for asset in download_unit_tests_dataset.ASSETS:
+        monkeypatch.setitem(asset, "sha256", hashlib.sha256(archives[asset["url"]]).hexdigest())
 
     class Response:
         def __init__(self, content: bytes):
@@ -62,3 +67,17 @@ def test_download_and_extract_asset_falls_back_without_github_token(monkeypatch,
     assert get.call_args_list == [
         call(asset["url"], stream=True, timeout=60) for asset in download_unit_tests_dataset.ASSETS
     ]
+
+
+def test_download_and_extract_asset_rejects_digest_mismatch(monkeypatch, tmp_path):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size: int):
+            yield b"tampered"
+
+    monkeypatch.setenv(download_unit_tests_dataset.TEST_DATA_ROOT_ENV, str(tmp_path / "missing"))
+    monkeypatch.setattr(download_unit_tests_dataset.requests, "get", lambda *_args, **_kwargs: Response())
+
+    assert not download_unit_tests_dataset.download_and_extract_asset(tmp_path / "output")
