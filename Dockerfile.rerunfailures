@@ -1,0 +1,4 @@
+FROM 766267172432.dkr.ecr.us-east-1.amazonaws.com/megatron-lm:59b72fa57f2059e858cb4bb5c094e62cc590754f-aws-h100
+USER root
+RUN /opt/venv/bin/pip install --no-cache-dir pytest-rerunfailures==16.1
+USER 1000
