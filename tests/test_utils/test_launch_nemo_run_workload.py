@@ -1,7 +1,11 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
+import pathlib
 import threading
 from unittest.mock import Mock
+
+import click
+import pytest
 
 from tests.test_utils.python_scripts import launch_nemo_run_workload
 
@@ -66,3 +70,42 @@ def test_stopped_monitor_does_not_cancel_attempt():
 
     assert not failure_detected_event.is_set()
     experiment.cancel.assert_not_called()
+
+
+def test_render_workload_script_rebases_current_checkout_only():
+    script = 'cd /opt/megatron-lm\nTEST_PATH="/opt/megatron-lm"\nLEGACY=/opt/megatron-lm-legacy\nLOG={assets_dir}'
+
+    rendered = launch_nemo_run_workload._render_workload_script(
+        script, {"assets_dir": "/workspace/megatron/assets_dir"}, pathlib.PurePosixPath("/workspace/megatron")
+    )
+
+    assert rendered == (
+        "cd /workspace/megatron\n"
+        'TEST_PATH="/workspace/megatron"\n'
+        "LEGACY=/opt/megatron-lm-legacy\n"
+        "LOG=/workspace/megatron/assets_dir"
+    )
+
+
+def test_resolve_docker_workspace_uses_custom_paths_and_image_user(tmp_path):
+    workspace, docker_kwargs = launch_nemo_run_workload._resolve_docker_workspace(
+        tmp_path, "/workspace/megatron", None
+    )
+
+    assert workspace.host_root == tmp_path.resolve()
+    assert workspace.container_root == pathlib.PurePosixPath("/workspace/megatron")
+    assert workspace.assets_dir == pathlib.PurePosixPath("/workspace/megatron/assets_dir")
+    assert workspace.artifacts_dir == pathlib.PurePosixPath("/workspace/megatron/artifacts_dir")
+    assert docker_kwargs == {}
+
+
+def test_resolve_docker_workspace_sets_explicit_user(tmp_path):
+    _, docker_kwargs = launch_nemo_run_workload._resolve_docker_workspace(tmp_path, "/opt/megatron-lm", "1000:1000")
+
+    assert docker_kwargs == {"user": "1000:1000"}
+
+
+@pytest.mark.parametrize("container_root", ["opt/megatron-lm", "/opt/../root"])
+def test_resolve_docker_workspace_rejects_invalid_container_root(tmp_path, container_root):
+    with pytest.raises(click.BadParameter, match="absolute normalized path"):
+        launch_nemo_run_workload._resolve_docker_workspace(tmp_path, container_root, None)

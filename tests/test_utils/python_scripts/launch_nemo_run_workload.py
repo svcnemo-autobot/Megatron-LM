@@ -2,10 +2,11 @@
 
 import io
 import logging
-import os
 import pathlib
+import re
 import sys
 import threading
+from dataclasses import dataclass
 from typing import Optional
 
 import click
@@ -17,12 +18,52 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class _DockerWorkspace:
+    """Host and container paths used by a local nemo-run workload."""
+
+    host_root: pathlib.Path
+    container_root: pathlib.PurePosixPath
+
+    @property
+    def assets_dir(self) -> pathlib.PurePosixPath:
+        return self.container_root / "assets_dir"
+
+    @property
+    def artifacts_dir(self) -> pathlib.PurePosixPath:
+        return self.container_root / "artifacts_dir"
+
+
+def _resolve_docker_workspace(
+    host_root: pathlib.Path, container_root: str, run_as_user: Optional[str]
+) -> tuple[_DockerWorkspace, dict[str, str]]:
+    """Validate local workspace options and return Docker keyword arguments."""
+    resolved_host_root = host_root.resolve()
+    if not resolved_host_root.is_dir():
+        raise click.BadParameter(f"host checkout does not exist: {resolved_host_root}", param_hint="--host-root")
+
+    resolved_container_root = pathlib.PurePosixPath(container_root)
+    if not resolved_container_root.is_absolute() or ".." in resolved_container_root.parts:
+        raise click.BadParameter(
+            "container checkout must be an absolute normalized path", param_hint="--container-root"
+        )
+
+    docker_kwargs = {"user": run_as_user} if run_as_user else {}
+    return _DockerWorkspace(resolved_host_root, resolved_container_root), docker_kwargs
+
+
+def _render_workload_script(script: str, magic_values: dict, container_root: pathlib.PurePosixPath) -> str:
+    """Render a recipe after rebasing references to the mounted checkout."""
+    default_root_pattern = r"/opt/megatron-lm(?=/|[\s'\";]|$)"
+    rebased_script = re.sub(default_root_pattern, lambda _: str(container_root), script)
+    return rebased_script.format(**magic_values)
+
+
 def is_flaky_failure(concat_allranks_logs: str) -> bool:
     """Assumes that certain keywords hint towards intermittent failures"""
 
     return (
-        "The server socket has failed to listen on any local network address."
-        in concat_allranks_logs
+        "The server socket has failed to listen on any local network address." in concat_allranks_logs
         or "Some NCCL operations have failed or timed out." in concat_allranks_logs
         or "Watchdog caught collective operation timeout" in concat_allranks_logs
         or "uncorrectable ECC error encountered" in concat_allranks_logs
@@ -92,9 +133,7 @@ def _cancel_on_flaky_failure(
     """Cancel an active attempt as soon as its streamed logs show a flaky failure."""
     while not stop_event.wait(poll_interval):
         if _is_hang_prone_flaky_failure(log_buffer.getvalue()):
-            logger.warning(
-                "Detected flaky failure while job is running; cancelling current attempt."
-            )
+            logger.warning("Detected flaky failure while job is running; cancelling current attempt.")
             failure_detected_event.set()
             experiment.cancel(job_id)
             return
@@ -139,11 +178,32 @@ def _collect_failure_logs(workdir: pathlib.Path) -> list[str]:
 @click.option("--environment", required=True, type=str, help="Environment of the workload")
 @click.option("--platform", required=True, type=str, help="Platform of the workload")
 @click.option("--container-image", required=True, type=str, help="Container image of the workload")
-@click.option(
-    "--n-repeat", required=False, type=int, help="Number of times to repeat the workload", default=1
-)
+@click.option("--n-repeat", required=False, type=int, help="Number of times to repeat the workload", default=1)
 @click.option("--data-dir", required=False, type=str, help="Data directory of the workload")
 @click.option("--hf-home", required=False, type=str, help="HF home directory of the workload")
+@click.option(
+    "--host-root",
+    required=False,
+    type=click.Path(path_type=pathlib.Path, file_okay=False),
+    default=pathlib.Path("."),
+    show_default="current directory",
+    help="Host checkout to mount into the test container",
+)
+@click.option(
+    "--container-root",
+    required=False,
+    type=str,
+    default="/opt/megatron-lm",
+    show_default=True,
+    help="Checkout path inside the test container",
+)
+@click.option(
+    "--run-as-user",
+    required=False,
+    type=str,
+    default=None,
+    help="Docker user or uid[:gid]; omitted to use the image default",
+)
 @click.option("--tag", required=False, type=str, help="Tag of the workload")
 @click.option(
     "--enable-lightweight-mode",
@@ -159,10 +219,7 @@ def _collect_failure_logs(workdir: pathlib.Path) -> list[str]:
     required=False,
     type=str,
     default=None,
-    help=(
-        "Trigger cadence to filter tests by (pr|nightly|mergegroup). "
-        "Empty/unset disables the cadence filter."
-    ),
+    help=("Trigger cadence to filter tests by (pr|nightly|mergegroup). " "Empty/unset disables the cadence filter."),
 )
 def main(
     scope,
@@ -174,11 +231,17 @@ def main(
     n_repeat: int = 1,
     data_dir: Optional[str] = None,
     hf_home: Optional[str] = None,
+    host_root: pathlib.Path = pathlib.Path("."),
+    container_root: str = "/opt/megatron-lm",
+    run_as_user: Optional[str] = None,
     tag: Optional[str] = None,
     enable_lightweight_mode: Optional[bool] = False,
     cadence: Optional[str] = None,
 ):
     cadence_arg = cadence or None
+    workspace, docker_kwargs = _resolve_docker_workspace(host_root, container_root, run_as_user)
+    workspace.host_root.joinpath("assets_dir", "logs").mkdir(parents=True, exist_ok=True)
+    workspace.host_root.joinpath("artifacts_dir").mkdir(parents=True, exist_ok=True)
 
     workloads = recipe_parser.load_workloads(
         container_image="none",
@@ -198,18 +261,18 @@ def main(
 
     workload = workloads[0]
     magic_values = dict(workload.spec)
-    magic_values["assets_dir"] = "/opt/megatron-lm/assets_dir"
-    magic_values["artifacts_dir"] = "/opt/megatron-lm/artifacts_dir"
+    magic_values["assets_dir"] = str(workspace.assets_dir)
+    magic_values["artifacts_dir"] = str(workspace.artifacts_dir)
     magic_values["environment"] = environment
     magic_values["n_repeat"] = n_repeat
     magic_values["test_case"] = workload.spec["test_case"]
     magic_values["name"] = workload.spec["name"].format(**magic_values)
-    workload.spec["script"] = workload.spec["script"].format(**magic_values)
+    workload.spec["script"] = _render_workload_script(workload.spec["script"], magic_values, workspace.container_root)
 
     inline_script = run.Script(inline=workload.spec["script"])
 
     artifacts = []
-    artifacts.append(f"{os.getcwd()}:/opt/megatron-lm")
+    artifacts.append(f"{workspace.host_root}:{workspace.container_root}")
     if data_dir:
         artifacts.append(f"{pathlib.Path(data_dir)}:/mnt/artifacts")
     if hf_home:
@@ -225,17 +288,18 @@ def main(
             "PYTHONUNBUFFERED": "1",
             "FORCE_COLOR": "1",
             "TERM": "xterm-256color",
-            "OUTPUT_PATH": os.getcwd(),
+            "OUTPUT_PATH": str(workspace.assets_dir),
             "ENABLE_LIGHTWEIGHT_MODE": str(enable_lightweight_mode).lower(),
             "N_REPEAT": str(n_repeat),
             "CLUSTER": "dgxh100_dgxc",
             "NCCL_DEBUG": "INFO",
-            "NCCL_DEBUG_FILE": "/opt/megatron-lm/assets_dir/logs/nccl_debug.log",
+            "NCCL_DEBUG_FILE": str(workspace.assets_dir / "logs" / "nccl_debug.log"),
             "HF_HOME": "/mnt/hf_home",
             "TRANSFORMERS_OFFLINE": "1",
         },
         packager=run.Packager(),
         volumes=artifacts,
+        additional_kwargs=docker_kwargs,
     )
 
     n_attempts = 0
@@ -272,13 +336,7 @@ def main(
                 exp.dryrun(log=True)
                 monitor_thread = threading.Thread(
                     target=_cancel_on_flaky_failure,
-                    args=(
-                        exp,
-                        job_id,
-                        tee_buffer,
-                        monitor_stop_event,
-                        flaky_failure_detected_event,
-                    ),
+                    args=(exp, job_id, tee_buffer, monitor_stop_event, flaky_failure_detected_event),
                     daemon=True,
                 )
                 monitor_thread.start()
@@ -300,7 +358,7 @@ def main(
 
         logger.error(f"Job failed with status: {job_dict['status']}")
         all_ranks_all_logs = [tee_buffer.getvalue()]
-        all_ranks_all_logs.extend(_collect_failure_logs(pathlib.Path(os.getcwd())))
+        all_ranks_all_logs.extend(_collect_failure_logs(workspace.host_root))
         all_ranks_all_logs_string = "\n".join(all_ranks_all_logs)
         if flaky_failure_detected_event.is_set() or is_flaky_failure(all_ranks_all_logs_string):
             logger.warning("Detected flaky failure, attempt restart.")
