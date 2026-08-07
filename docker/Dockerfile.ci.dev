@@ -131,7 +131,9 @@ RUN for attempt in 1 2 3; do \
         python /tmp/download_unit_tests_dataset.py --assets-dir /opt/data && break; \
         test "$attempt" -lt 3 || exit 1; \
         sleep 10; \
-    done && rm /tmp/download_unit_tests_dataset.py
+    done && \
+    python -c 'from transformers import AutoTokenizer; AutoTokenizer.from_pretrained("gpt2", vocab_file="/opt/data/tokenizers/megatron/gpt2-vocab.json", merges_file="/opt/data/tokenizers/megatron/gpt2-merges.txt")' && \
+    rm /tmp/download_unit_tests_dataset.py
 ENV UV_PYTHON=$UV_PROJECT_ENVIRONMENT/bin/python
 
 ##### For NVIDIANS only #####
