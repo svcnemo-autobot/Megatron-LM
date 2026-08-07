@@ -132,7 +132,16 @@ RUN for attempt in 1 2 3; do \
         test "$attempt" -lt 3 || exit 1; \
         sleep 10; \
     done && \
-    python -c 'from transformers import AutoTokenizer; AutoTokenizer.from_pretrained("gpt2", vocab_file="/opt/data/tokenizers/megatron/gpt2-vocab.json", merges_file="/opt/data/tokenizers/megatron/gpt2-merges.txt")' && \
+    export HF_CACHE_ROOT="${HF_HOME:-/root/.cache/huggingface}" && \
+    export GPT2_COMMIT=607a30d783dfa663caf39e06633721c8d4cfcd7e && \
+    export GPT2_SNAPSHOT="$HF_CACHE_ROOT/hub/models--gpt2/snapshots/$GPT2_COMMIT" && \
+    mkdir -p "$GPT2_SNAPSHOT" "$HF_CACHE_ROOT/hub/models--gpt2/refs" && \
+    printf '%s' "$GPT2_COMMIT" > "$HF_CACHE_ROOT/hub/models--gpt2/refs/main" && \
+    cp /opt/data/tokenizers/megatron/gpt2-vocab.json "$GPT2_SNAPSHOT/vocab.json" && \
+    cp /opt/data/tokenizers/megatron/gpt2-merges.txt "$GPT2_SNAPSHOT/merges.txt" && \
+    printf '{"model_type":"gpt2"}\n' > "$GPT2_SNAPSHOT/config.json" && \
+    printf '{"model_max_length":1024}\n' > "$GPT2_SNAPSHOT/tokenizer_config.json" && \
+    TRANSFORMERS_OFFLINE=1 HF_HUB_OFFLINE=1 python -c 'from transformers import AutoTokenizer; tokenizer = AutoTokenizer.from_pretrained("gpt2", vocab_file="/opt/data/tokenizers/megatron/gpt2-vocab.json", merges_file="/opt/data/tokenizers/megatron/gpt2-merges.txt"); assert len(tokenizer) == 50257' && \
     rm /tmp/download_unit_tests_dataset.py
 ENV UV_PYTHON=$UV_PROJECT_ENVIRONMENT/bin/python
 
