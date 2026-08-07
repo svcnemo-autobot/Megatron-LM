@@ -147,6 +147,7 @@ test = [
     "tensorboard",
     "pyyaml",
     "nemo-run",
+    "pytest-rerunfailures==16.1",
 ]
 docs = [
     "sphinx",
