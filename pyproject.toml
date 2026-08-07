@@ -147,6 +147,7 @@ test = [
     "tensorboard",
     "pyyaml",
     "nemo-run",
+    # Executes the rerun count declared by existing @pytest.mark.flaky(reruns=...) tests.
     "pytest-rerunfailures==16.1",
 ]
 docs = [
