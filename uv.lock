@@ -3692,7 +3692,10 @@ dev = [
     { name = "einops" },
     { name = "emerging-optimizers", marker = "python_full_version >= '3.12'" },
     { name = "fastapi" },
+<<<<<<< HEAD
     { name = "flash-linear-attention", extra = ["tilelang"], marker = "extra == 'extra-13-megatron-core-dev'" },
+=======
+>>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
     { name = "flashinfer-python" },
     { name = "hypercorn" },
     { name = "mamba-ssm" },
@@ -3709,8 +3712,15 @@ dev = [
     { name = "nvidia-resiliency-ext" },
     { name = "nvtx" },
     { name = "onnxscript" },
+<<<<<<< HEAD
     { name = "openai", extra = ["aiohttp"], marker = "extra == 'extra-13-megatron-core-dev'" },
     { name = "opentelemetry-api", version = "1.33.1", source = { registry = "https://pypi.org/simple" } },
+=======
+    { name = "openai", extra = ["aiohttp"] },
+    { name = "opentelemetry-api" },
+    { name = "orjson" },
+    { name = "pillow" },
+>>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
     { name = "quart" },
     { name = "tensorstore", version = "0.1.74", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-13-megatron-core-dev') or (extra == 'extra-13-megatron-core-dev' and extra == 'extra-13-megatron-core-lts')" },
     { name = "tensorstore", version = "0.1.82", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-13-megatron-core-dev') or (extra == 'extra-13-megatron-core-dev' and extra == 'extra-13-megatron-core-lts')" },
@@ -3752,6 +3762,7 @@ otel = [
 ]
 ssm = [
     { name = "causal-conv1d" },
+    { name = "flash-linear-attention" },
     { name = "mamba-ssm" },
 ]
 te = [
@@ -3848,11 +3859,15 @@ requires-dist = [
     { name = "emerging-optimizers", marker = "python_full_version >= '3.12' and extra == 'lts'", git = "https://github.com/NVIDIA-NeMo/Emerging-Optimizers.git?rev=v0.3.0" },
     { name = "fastapi", marker = "extra == 'dev'", specifier = "~=0.50" },
 <<<<<<< HEAD
+<<<<<<< HEAD
     { name = "fastapi", marker = "extra == 'lts'", specifier = "~=0.50" },
     { name = "flash-linear-attention", extras = ["tilelang"], marker = "extra == 'dev'", specifier = "==0.5.1" },
 =======
     { name = "flash-linear-attention", marker = "extra == 'dev'", specifier = "==0.5.1" },
 >>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
+=======
+    { name = "flash-linear-attention", marker = "extra == 'ssm'", specifier = "==0.5.1" },
+>>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
     { name = "flashinfer-python", marker = "extra == 'dev'", specifier = ">=0.5.0,<0.7.0" },
     { name = "flashinfer-python", marker = "extra == 'lts'", specifier = ">=0.5.0,<0.7.0" },
     { name = "flask-restful", marker = "extra == 'mlm'" },
@@ -3890,6 +3905,7 @@ requires-dist = [
     { name = "orjson", marker = "extra == 'dev'" },
 >>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     { name = "packaging", specifier = ">=24.2" },
+    { name = "pillow", marker = "extra == 'dev'" },
     { name = "quart", marker = "extra == 'dev'" },
     { name = "sentencepiece", marker = "extra == 'mlm'" },
     { name = "sentencepiece", marker = "extra == 'training'" },

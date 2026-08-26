@@ -89,7 +89,6 @@ dev = [
     "tqdm",
     "einops~=0.8",
     "tensorstore~=0.1,!=0.1.46,!=0.1.72",
-<<<<<<< HEAD
     "nvtx~=0.2",
     "multi-storage-client~=0.27",
     "opentelemetry-api~=1.33.1",
@@ -122,51 +121,11 @@ lts = [
     "megatron-energon[av_decode]~=6.0",
     "av",
     "flashinfer-python>=0.5.0,<0.7.0",
-=======
-    "multi-storage-client~=0.50",
-    "opentelemetry-api>=1.33.1,<2",
-    "nemo-lens",
-    "flash-linear-attention==0.5.1",
-    "megatron-energon[av_decode]~=7.0",
-    "av",
-    "flashinfer-python>=0.5.0,<0.7.0",
-    "nvidia-cudnn-frontend[cutedsl]==1.26.0",
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     "wget",
     "onnxscript",
     "fastapi~=0.50",                      # Forcing a little bit more recent version of fastapi to be compatible with pydantic 2.0
     "datasets",
-<<<<<<< HEAD
     "emerging_optimizers; python_version >= '3.12'",
-=======
-    "emerging_optimizers",
-    "hypercorn",
-    "quart",
-    "openai[aiohttp]",
-    "orjson",
-    "fast-hadamard-transform",
-    "zstandard",
-]
-
-otel = [
-    "nemo-lens[sdk]",
-]
-
-### 'lts' extra is deprecated                                                   ###
-### LTS Python dependencies are now pinned directly in docker/Dockerfile.ci.lts ###
-### so this pyproject.toml can host meaningful module-level extras without      ###
-### colliding with the LTS pin set. Kept as an empty alias for one release      ###
-### cycle so `pip install megatron-core[lts]` does not error out.               ###
-lts = []
-
-te = [
-    "transformer-engine[pytorch,core_cu13]",
-]
-
-ssm = [
-    "mamba-ssm",
-    "causal-conv1d~=1.5",
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 ]
 
 [dependency-groups]
@@ -174,7 +133,7 @@ test = [
     "coverage",
     "nltk",
     "wrapt",
-    "pytest==9.1.1",
+    "pytest==8.3.5",
     "pytest-mock",
     "pytest-cov",
     "pytest-random-order",
@@ -200,8 +159,7 @@ build = [
     "pybind11",
     "Cython>=3.0.0",
     "torch",
-    "nvidia-cudnn-frontend>=1.25.0",  # for TE
-    "nvidia-mathdx",                  # for TE
+    "nvidia-mathdx",              # for TE
 ]
 linting = [
     "ruff~=0.9.0",
@@ -211,12 +169,7 @@ linting = [
     "pylint==3.2.6",
 ]
 ci = ["python-gitlab", "slack-sdk", "pandas"]
-<<<<<<< HEAD
 no_pypi_wheels = ["flash_mla", "emerging_optimizers; python_version >= '3.12'", "fast-hadamard-transform"]
-=======
-batch_invariant = ["deep_gemm"]
-no_pypi_wheels = ["flash_mla", "emerging_optimizers", "deep_gemm"]
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 [tool.uv]
 default-groups = ["linting", "build", "test"]
@@ -226,7 +179,6 @@ no-build-isolation-package = [
     "mamba-ssm",
     "transformer-engine",
     "transformer-engine-torch",
-    "deep_gemm",
     "fast-hadamard-transform",
 ]
 link-mode = "copy"
@@ -249,11 +201,7 @@ requires-dist = []
 
 [[tool.uv.dependency-metadata]]
 name = "transformer-engine"
-<<<<<<< HEAD
 version = "2.14.0+f031cf87"
-=======
-version = "2.17.1+4329ff84"
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 requires-dist = [
     "einops",
     "importlib-metadata",
@@ -275,21 +223,11 @@ requires-dist = ["torch", "packaging", "ninja"]
 flash_mla = [
     { git = "https://github.com/deepseek-ai/FlashMLA", rev = "nv_dev" },
 ]
-<<<<<<< HEAD
 nvidia-cudnn-frontend = { git = "https://github.com/NVIDIA/cudnn-frontend.git", rev = "0a14b7181d129d30e7bad34b8c3ed0a0c995e23d" }
 transformer-engine = { git = "https://github.com/NVIDIA/TransformerEngine.git", rev = "f031cf87bd054c7558b887df7bed93975456667f" }
 nemo-run = { git = "https://github.com/NVIDIA-NeMo/Run.git", rev = "17ae86b64d7f75653351664f5d8c9e466faede00" }
 emerging_optimizers = { git = "https://github.com/NVIDIA-NeMo/Emerging-Optimizers.git", rev = "v0.3.0" }
 fast-hadamard-transform = { git = "https://github.com/Dao-AILab/fast-hadamard-transform.git", rev = "f134af63deb2df17e1171a9ec1ea4a7d8604d5ca" }
-=======
-deep_gemm = { git = "https://github.com/deepseek-ai/DeepGEMM.git", rev = "714dd1a4a980f7937a74343d19a8eba4fe321480" }
-transformer-engine = { git = "https://github.com/NVIDIA/TransformerEngine.git", rev = "4329ff84bfbdaa778a33cba02a15fb0807c64689" }
-nemo-run = { git = "https://github.com/NVIDIA-NeMo/Run.git", rev = "e3935393a290aed1822af52139b4b8ee270fed1f" }
-emerging_optimizers = { git = "https://github.com/NVIDIA-NeMo/Emerging-Optimizers.git", rev = "v0.2.0" }
-fast-hadamard-transform = { git = "https://github.com/Dao-AILab/fast-hadamard-transform.git", rev = "f134af63deb2df17e1171a9ec1ea4a7d8604d5ca" }
-mamba-ssm = { git = "https://github.com/state-spaces/mamba.git", rev = "0048fbf2e7b2f214dcbe703ea3dec2b9647595e1" }
-nemo-lens = { git = "https://github.com/NVIDIA-NeMo/Lens.git", rev = "b85578fc2b736a1804705e537001b5f45e9c715d" }
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 [tool.isort]
 profile = "black"                                                          # black-compatible

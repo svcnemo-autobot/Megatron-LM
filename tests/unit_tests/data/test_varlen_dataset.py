@@ -2,6 +2,7 @@
 
 """Unit tests for :mod:`megatron.training.datasets.varlen_dataset`.
 
+<<<<<<< HEAD
 These tests cover the schema-detection and message-normalization helpers and
 the :class:`VarlenLowLevelDataset` loader. The end-to-end SFTDataset packing
 behavior is exercised by the existing SFT test suite; here we focus on the
@@ -16,15 +17,28 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 import torch
+=======
+These tests cover the schema-detection and message-normalization helpers. The
+end-to-end SFTDataset packing behavior is exercised by the existing SFT test
+suite; here we focus on the varlen-specific contracts (auto-detect schema,
+normalize to messages, ValueError on unsupported shapes).
+"""
+
+import pytest
+>>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
 
 # Import via the public module path so this test gets discovered through the
 # regular pytest entry point. The functions under test are pure Python and do
 # not require torch.distributed.
+<<<<<<< HEAD
 from megatron.training.datasets.sft_dataset import IGNORE_INDEX
 from megatron.training.datasets.varlen_dataset import (
     MockVarlenDataset,
     VarlenDataset,
     VarlenLowLevelDataset,
+=======
+from megatron.training.datasets.varlen_dataset import (
+>>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
     _alpaca_to_messages,
     _looks_like_hf_id,
     _messages_passthrough,
@@ -300,6 +314,7 @@ def test_select_converter_alpaca_beats_pretrain_text():
 def test_select_converter_messages_beats_pretrain_text():
     fn, name = _select_converter(["text", "messages"])
     assert name == "openai-messages"
+<<<<<<< HEAD
 
 
 # ----------------------------------------------------------------------------
@@ -877,3 +892,5 @@ def test_dcp_dataloader_yields_microbatches_for_scheduler():
     finally:
         destroy_global_vars()
         Utils.destroy_model_parallel()
+=======
+>>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32

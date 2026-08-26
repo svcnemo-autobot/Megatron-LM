@@ -10,7 +10,10 @@ from megatron.core.extensions.transformer_engine import TEDotProductAttention
 from megatron.core.models.hybrid.hybrid_block import HybridStack
 >>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 from megatron.core.models.hybrid.hybrid_layer_allocation import Symbols, validate_segment_layers
-from megatron.core.models.hybrid.hybrid_layer_specs import hybrid_stack_spec
+from megatron.core.models.hybrid.hybrid_layer_specs import (
+    hybrid_inference_stack_spec,
+    hybrid_stack_spec,
+)
 from megatron.core.process_groups_config import ProcessGroupCollection
 from megatron.core.ssm.gated_delta_net import HAVE_FLA_KDA, GatedDeltaNet, KimiDeltaAttention
 from megatron.core.ssm.mamba_layer import MambaLayer
@@ -459,6 +462,7 @@ class TestHybridBlock:
         assert isinstance(layers[1].self_attention, SelfAttention)
         assert isinstance(layers[2], MambaLayer)
 
+<<<<<<< HEAD
     @pytest.mark.skipif(not HAVE_FLA_KDA, reason="FLA with KDA support is not installed.")
     def test_kda_layer_type(self):
         """K builds a TransformerLayer wrapping KimiDeltaAttention."""
@@ -473,6 +477,13 @@ class TestHybridBlock:
         )
         assert isinstance(block.layers[0], TransformerLayer)
         assert isinstance(block.layers[0].self_attention, KimiDeltaAttention)
+=======
+    def test_gdn_inference_spec(self):
+        """The inference stack must materialize GDN rather than its IdentityOp default."""
+        gdn_spec = hybrid_inference_stack_spec.submodules.gdn_layer
+        assert gdn_spec.module is TransformerLayer
+        assert gdn_spec.submodules.self_attention.module is GatedDeltaNet
+>>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
 
     def test_gdn_gpu_forward(self):
         """Test GPU forward pass with GDN, attention, and Mamba layers."""

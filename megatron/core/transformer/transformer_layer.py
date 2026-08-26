@@ -996,16 +996,9 @@ class TransformerLayer(GraphableMegatronModule, BaseTransformerLayer):
         """Run pre-MLP norm + MLP/MoE and return the raw output before BDA."""
         pre_mlp_layernorm_output = self._forward_pre_mlp_layernorm(hidden_states)
 
-        if isinstance(pre_mlp_layernorm_output, tuple):
-            if len(pre_mlp_layernorm_output) != 2:
-                raise ValueError(
-                    f"When the output of pre_mlp_layernorm is a tuple, it is "
-                    f"expected to have 2 elements (output, residual), but "
-                    f"got {len(pre_mlp_layernorm_output)}"
-                )
+        if self._pre_mlp_layernorm_returns_residual:
             pre_mlp_layernorm_output, residual = pre_mlp_layernorm_output
         else:
-            # Residual connection.
             residual = hidden_states
 
         if self.config.fp32_residual_connection:
