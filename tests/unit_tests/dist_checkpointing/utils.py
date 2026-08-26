@@ -185,19 +185,11 @@ def setup_model_and_optimizer(
     dist_opt=True,
     optimizer='adam',
     use_param_layout=False,
-<<<<<<< HEAD
     chunked_optimizer_state_offload=False,
     optimizer_state_offload_chunk_size_mb=0,
     optimizer_state_offload_fraction=1.0,
     use_precision_aware_optimizer=False,
     initialize_optimizer_state=True,
-=======
-    muon_scalar_optimizer='adam',
-    cp=1,
-    ep=1,
-    etp=1,
-    use_megatron_fsdp=False,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 ):
     optimizer_type = optimizer
     use_layer_wise = False
@@ -218,6 +210,12 @@ def setup_model_and_optimizer(
     mock_args = parse_args(ignore_unknown_args=True)
     with mock.patch('megatron.training.training.get_args', new=lambda: mock_args):
         init_basic_mock_args(mock_args, tp, pp, bf16=bf16)
+        if ddp_num_buckets is not None:
+            # resolve_ddp_bucket_size() forces a single bucket unless grad reduction
+            # overlaps, so both knobs are needed to actually split the grad buffer.
+            mock_args.ddp_num_buckets = ddp_num_buckets
+            mock_args.overlap_grad_reduce = True
+        mock_args.ddp_pad_buckets_for_high_nccl_busbw = ddp_pad_buckets_for_high_nccl_busbw
         mock_args.context_parallel_size = cp
         mock_args.expert_model_parallel_size = ep
         mock_args.expert_tensor_parallel_size = etp
@@ -256,14 +254,10 @@ def setup_model_and_optimizer(
         use_distributed_optimizer=ddp_use_dist_opt,
         use_layer_wise_distributed_optimizer=use_layer_wise,
         optimizer=optimizer,
-<<<<<<< HEAD
         chunked_optimizer_state_offload=chunked_optimizer_state_offload,
         optimizer_state_offload_chunk_size_mb=optimizer_state_offload_chunk_size_mb,
         optimizer_state_offload_fraction=optimizer_state_offload_fraction,
         use_precision_aware_optimizer=use_precision_aware_optimizer,
-=======
-        muon_scalar_optimizer=muon_scalar_optimizer,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     )
     if use_megatron_fsdp:
         # The FSDP DTensor sharded-state path may materialize missing optimizer
@@ -296,7 +290,6 @@ def setup_model_and_optimizer(
         else:
             optimizer.init_state_fn(optimizer.optimizer, optimizer.config)
 
-<<<<<<< HEAD
     if initialize_optimizer_state:
         if isinstance(optimizer, ChainedOptimizer):
             _init_states(optimizer)
@@ -310,25 +303,6 @@ def setup_model_and_optimizer(
     optimizer.reload_model_params()
     if chunked_optimizer_state_offload:
         optimizer.offload_optimizer_state_for_forward()
-=======
-    if isinstance(optimizer, ChainedOptimizer):
-        _init_states(optimizer)
-    else:
-        if hasattr(optimizer, 'optimizer_state_keys'):
-            state_keys = optimizer.optimizer_state_keys
-        else:
-            state_keys = ("exp_avg", "exp_avg_sq")
-        for group in optimizer.optimizer.param_groups:
-            for p in group['params']:
-                if len(optimizer.optimizer.state[p]) == 0:
-                    for key in state_keys:
-                        optimizer.optimizer.state[p][key] = torch.rand_like(p.data)
-
-    # Megatron-FSDP owns the model/main-parameter synchronization and its
-    # DistributedOptimizer intentionally does not implement this legacy copy.
-    if not use_megatron_fsdp:
-        optimizer.reload_model_params()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     CachedMetadataFileSystemReader.clear_metadata_cache()
     return unwrap_model(model), optimizer
 

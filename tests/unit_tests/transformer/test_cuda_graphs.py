@@ -38,18 +38,7 @@ from megatron.core.transformer.cuda_graphs import (
     CudaGraphManager,
     TECudaGraphHelper,
     _CudagraphGlobalRecord,
-<<<<<<< HEAD
     _layer_is_graphable,
-=======
-    create_cudagraphs,
-    delete_cuda_graphs,
-)
-from megatron.core.transformer.enums import (
-    AttnBackend,
-    CudaGraphModule,
-    CudaGraphScope,
-    InferenceCudaGraphScope,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 )
 from megatron.core.transformer.mlp import MLPSubmodules
 from megatron.core.transformer.module import GraphableMegatronModule, MegatronModule
@@ -417,6 +406,33 @@ class TestCudaGraphConfigAndArguments:
         assert cfg.cuda_graph_scope is None
 
 
+class TestCudaGraphReplay:
+    def test_gtp_forward_ensures_captured_params_ready_before_replay(self, monkeypatch):
+        calls = []
+        first = object()
+        second = object()
+        runner = object.__new__(_CudaGraphRunner)
+        runner._gtp_fwd_params_to_ensure_ready = (first, second)
+        runner.grad_enabled = False
+        runner.fwd_graph_outputs = (object(),)
+        runner.get_mismatch_errors = lambda args, kwargs: []
+        runner.get_tensors = lambda args, kwargs, check_types: []
+        runner.to_list = lambda value: list(value) if isinstance(value, tuple) else [value]
+        runner._make_pipeline_output_viewless = lambda output: output
+        monkeypatch.setattr(
+            cuda_graphs_module,
+            "ensure_params_ready",
+            lambda params: calls.append(("ready", tuple(params))),
+        )
+        monkeypatch.setattr(
+            _CudagraphReplayNode, "apply", lambda *args: calls.append("replay") or (object(),)
+        )
+
+        runner.replay_graph_capture(False, (), {})
+
+        assert calls == [("ready", (first, second)), "replay"]
+
+
 class TestParallelTransformerBlockCudagraphs:
     def setup_method(self, method):
         # initialize parallel state
@@ -479,6 +495,26 @@ class TestParallelTransformerBlockCudagraphs:
                 .cudagraph_manager.cudagraph_runners[0]
                 .fwd_graph
             )
+
+    @pytest.mark.skipif(
+        not (HAVE_TE and is_te_min_version("1.5.0")),
+        reason="use_te_rng_tracker requires TransformerEngine version >= 1.5",
+    )
+    def test_dense_mlp_scope_constructs(self):
+        config = TransformerConfig(
+            num_layers=8,
+            hidden_size=64,
+            num_attention_heads=4,
+            use_cpu_initialization=True,
+            cuda_graph_impl="local",
+            cuda_graph_modules=[CudaGraphModule.mlp],
+        )
+
+        block = TransformerBlock(config, get_gpt_layer_with_transformer_engine_spec())
+
+        assert block.layers
+        assert all(not layer.is_moe_layer for layer in block.layers)
+        assert all(isinstance(layer.cudagraph_manager, CudaGraphManager) for layer in block.layers)
 
 
 @pytest.mark.skipif(
