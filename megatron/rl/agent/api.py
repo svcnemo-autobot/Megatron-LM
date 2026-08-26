@@ -1,15 +1,9 @@
 # Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
-import asyncio
-import time
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Awaitable, Callable, Generic, NamedTuple, TypeVar
+from typing import Awaitable, Callable, Generic, NamedTuple, TypeVar
 
-import numpy as np
 from pydantic import BaseModel
-
-from megatron.core.inference.utils import asyncio_Queue, asyncio_QueueShutDown
-from megatron.core.utils import trace_async_exceptions
 
 from ..__init__ import Request, TypeLookupable
 from ..inference import (
@@ -17,14 +11,8 @@ from ..inference import (
     InferenceRequest,
     InferenceResponse,
     LLMChatMessage,
-    ReturnsRaw,
 )
-from ..rollout_granularity import (
-    RELEASE_STATE_BY_SUBMISSION,
-    ConsumptionGranularity,
-    ReleaseState,
-    SubmissionGranularity,
-)
+from ..rollout_granularity import ConsumptionGranularity, SubmissionGranularity
 
 
 class AgentBaseModel(BaseModel, extra='allow'):
@@ -47,9 +35,11 @@ class GroupedRolloutRequest(Request):
     inference_interface: InferenceInterface
     validation: bool = False
     filter_groups_with_same_reward: bool = False
-    streaming: bool = False
     submission_granularity: SubmissionGranularity = "B"
     consumption_granularity: ConsumptionGranularity = "B"
+
+
+KNOWN_ROLLOUT_STATUSES = ('ok', 'placeholder', 'masked', 'graded')
 
 
 class Rollout(AgentBaseModel):
@@ -60,9 +50,8 @@ class Rollout(AgentBaseModel):
     reward: float = None
     env_id: str = ''
     problem_id: str | None = None
-    policy_epoch: list[list[tuple[int, int]]]
-    kv_cache_epoch: list[list[tuple[int, int]]]
-    num_evictions: list[int]
+    rollout_status: str = 'ok'
+    failure_reason: str | None = None
 
 
 class TokenRollout(AgentBaseModel):
@@ -74,9 +63,10 @@ class TokenRollout(AgentBaseModel):
     logprobs: list[list[float]] | None = None
     env_id: str = ''
     problem_id: str | None = None
-    policy_epoch: list[list[tuple[int, int]]]
-    kv_cache_epoch: list[list[tuple[int, int]]]
-    num_evictions: list[int]
+    completion_ids: list[str] = []
+    generation_cap: int | None = None
+    rollout_status: str = 'ok'
+    failure_reason: str | None = None
 
 
 Rollouts = list[TokenRollout | Rollout]
@@ -102,14 +92,23 @@ class RolloutGroup(AgentBaseModel):
 GroupedRollouts = list[RolloutGroup]
 
 
+class EpisodeResult(NamedTuple):
+    """All per-turn responses of one (possibly multi-turn) episode plus the final conversation."""
+
+    responses: list[InferenceResponse]
+    conversation: list[LLMChatMessage]
+
+
 class GroupRolloutParams(NamedTuple):
     """Returned by agent.prepare_group_rollout.
 
     One instance is created per group call and reused for all rollouts in that group.
+    Every rollout is an episode: run_episode generates it (one or more turns), while
+    build_rollout turns the completed episode into a Rollout.
     """
 
-    inference_request: InferenceRequest
-    build_rollout: Callable[[InferenceResponse], Awaitable[Rollout]]
+    run_episode: Callable[[], Awaitable[EpisodeResult]]
+    build_rollout: Callable[[EpisodeResult], Awaitable[Rollout]]
 
 
 class ContrastiveRollout(AgentBaseModel):
@@ -196,11 +195,10 @@ class TokenizedRolloutGenerator(Agent, ABC):
     async def get_reward_rollouts(self, request: RolloutRequest) -> list[TokenRollout]: ...
 
 
-class _GranularityConfig(NamedTuple):
-    submission: SubmissionGranularity
-    consumption: ConsumptionGranularity
-    num_groups_per_batch: int
+class EnvAllocation(NamedTuple):
+    """One env's constant share of every trainer batch."""
 
+<<<<<<< HEAD
     @classmethod
     def from_request(cls, request: GroupedRolloutRequest) -> "_GranularityConfig":
         cls._validate(request)
@@ -485,20 +483,19 @@ class _RolloutPipeline:
                 for group in batch:
                     yield group
                 self.gate.release_after("consumed")
+=======
+    agent: "GroupedRolloutGenerator"
+    env_id: str
+    num_groups: int
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 
 class GroupedRolloutGenerator(Agent, ABC):
-    """An interface to return grouped Rollout objects to support algorithms like GRPO."""
-
-    parallel_generation_tasks: int = 512
-
-    def __init__(self, *, parallel_generation_tasks: int | None = None, **kwargs):
-        super().__init__(**kwargs)
-        if parallel_generation_tasks is not None:
-            self.parallel_generation_tasks = parallel_generation_tasks
+    """Agent contract consumed by RolloutPipeline to generate grouped rollouts (e.g. GRPO)."""
 
     @abstractmethod
     async def prepare_group_rollout(self, request: GroupedRolloutRequest) -> GroupRolloutParams:
+<<<<<<< HEAD
         """Return the params for one group's rollouts.
 
         Called once per group by _RolloutPipeline.stage_prepare. The returned
@@ -532,6 +529,20 @@ class GroupedRolloutGenerator(Agent, ABC):
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             self._active_pipeline = None
+=======
+        """Return the params for one group's rollouts."""
+        ...
+
+    def rollout_allocations(self, num_groups: int) -> list[EnvAllocation]:
+        """Returns each env's per-trainer-batch allocation, in env order."""
+        return [
+            EnvAllocation(
+                agent=self,
+                env_id=getattr(self, "env_id", None) or "rollout",
+                num_groups=num_groups,
+            )
+        ]
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 
 class EvaluationAgent(Agent, ABC):

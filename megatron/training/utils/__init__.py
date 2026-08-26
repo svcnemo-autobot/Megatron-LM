@@ -5,8 +5,21 @@ from megatron.training.utils.common_utils import (
     calc_dtensor_params_l2_norm,
     calc_params_l2_norm,
     check_adlr_autoresume_termination,
+<<<<<<< HEAD
     get_batch_on_this_cp_rank,
     get_batch_on_this_tp_rank,
+=======
+    get_ltor_masks_and_position_ids,
+    print_rank_0,
+    warn_rank_0,
+    is_rank0,
+    is_last_rank,
+    print_rank_last,
+    is_hybrid_model,
+    is_gtp_remat_active,
+    is_first_or_last_pipeline_stage,
+    get_device_arch_version,
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     get_blend_and_blend_per_split,
     get_device_arch_version,
     get_ltor_masks_and_position_ids,

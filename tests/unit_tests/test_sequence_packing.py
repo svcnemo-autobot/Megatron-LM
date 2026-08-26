@@ -1,13 +1,19 @@
 # Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
+<<<<<<< HEAD
 import random
 from types import SimpleNamespace
 
 import numpy as np
+=======
+from types import SimpleNamespace
+
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 import pytest
 import torch
 
 from megatron.core import parallel_state
+<<<<<<< HEAD
 from megatron.core.datasets import data_schedule
 from megatron.core.datasets.data_schedule import (
     DefaultDynamicCPScheduler,
@@ -22,10 +28,18 @@ from megatron.core.datasets.data_schedule_utils import (
     reroute_samples_to_dcp_ranks,
 )
 from megatron.core.rerun_state_machine import RerunDataIterator
+=======
+from megatron.core.datasets.data_schedule import (
+    _build_thd_padding_mask,
+    _sanitize_thd_padding_values,
+    get_batch_on_this_rank_for_sequence_packing,
+)
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 from megatron.training.global_vars import unset_global_variables
 from tests.unit_tests.test_utilities import Utils
 
 
+<<<<<<< HEAD
 def test_scheduler_max_real_num_seqs_reserves_dummy_sequence():
     config = SimpleNamespace(
         thd_max_packed_sequences=32,
@@ -54,6 +68,8 @@ def test_scheduler_max_real_num_seqs_rejects_dummy_without_capacity():
         _get_scheduler_max_real_num_seqs(config)
 
 
+=======
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 def test_scheduler_thd_padding_mask_from_cu_seqlens():
     cu_seqlens = torch.tensor([0, 3, 5], dtype=torch.int32)
     cu_seqlens_padded = torch.tensor([0, 4, 8], dtype=torch.int32)
@@ -82,6 +98,7 @@ def test_scheduler_sanitizes_thd_padding_values():
     assert torch.equal(batch['position_ids'], torch.tensor([0, 1, 0, 0, 0]))
 
 
+<<<<<<< HEAD
 def test_scheduler_reroute_uses_dp_all_gather(monkeypatch):
     class _Group:
         def __init__(self, size, rank):
@@ -304,6 +321,8 @@ def test_scheduler_reroute_dp_all_gather_is_dcp_compatible():
         Utils.destroy_model_parallel()
 
 
+=======
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 class MockVariableLengthSequencePackingDataIterator:
     """
     Mock data iterator for testing get_batch_on_this_rank_for_sequence_packing.
@@ -316,7 +335,10 @@ class MockVariableLengthSequencePackingDataIterator:
         self,
         total_seq_length: int,
         sequence_lengths: list,
+<<<<<<< HEAD
         padded_sequence_lengths: list = None,
+=======
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         local_cp_size: int = None,
         device: str = "cuda",
         seed: int = 42,
@@ -326,12 +348,16 @@ class MockVariableLengthSequencePackingDataIterator:
             total_seq_length: Total length of packed sequences
             sequence_lengths: List of individual sequence lengths (variable-length).
                               If None, generates random variable lengths.
+<<<<<<< HEAD
             padded_sequence_lengths: Physical storage length for each sequence.
+=======
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             device: Device to create tensors on
             seed: Random seed for reproducibility
         """
         self.total_seq_length = total_seq_length
         self.sequence_lengths = sequence_lengths
+<<<<<<< HEAD
         self.padded_sequence_lengths = padded_sequence_lengths or sequence_lengths
         self.local_cp_size = local_cp_size
         self.device = device
@@ -345,6 +371,14 @@ class MockVariableLengthSequencePackingDataIterator:
             f"Padded sequence lengths sum {sum(self.padded_sequence_lengths)} "
             f"!= total {total_seq_length}"
         )
+=======
+        self.local_cp_size = local_cp_size
+        self.device = device
+        self.seed = seed
+        assert (
+            sum(self.sequence_lengths) == total_seq_length
+        ), f"Sequence lengths sum {sum(self.sequence_lengths)} != total {total_seq_length}"
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     def __iter__(self):
         """Interface for the data iterator."""
@@ -360,26 +394,37 @@ class MockVariableLengthSequencePackingDataIterator:
 
         # Create position_ids that reset for each sequence (THD format)
         position_ids = []
+<<<<<<< HEAD
         for seq_len, padded_seq_len in zip(self.sequence_lengths, self.padded_sequence_lengths):
             position_ids.extend(range(seq_len))
             position_ids.extend([0] * (padded_seq_len - seq_len))
+=======
+        for seq_len in self.sequence_lengths:
+            position_ids.extend(range(seq_len))
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         position_ids = torch.tensor(position_ids, dtype=torch.int64, device=dev)
 
         # Labels are tokens shifted by 1 for easy verification
         labels = tokens + 1
 
+<<<<<<< HEAD
         # Loss mask: 1.0 for valid tokens and 0.0 for physical padding.
         loss_mask = []
         for seq_len, padded_seq_len in zip(self.sequence_lengths, self.padded_sequence_lengths):
             loss_mask.extend([1.0] * seq_len)
             loss_mask.extend([0.0] * (padded_seq_len - seq_len))
         loss_mask = torch.tensor(loss_mask, dtype=torch.float32, device=dev)
+=======
+        # Loss mask: 1.0 for all positions except padding (none here)
+        loss_mask = torch.ones(self.total_seq_length, dtype=torch.float32, device=dev)
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         # Create cu_seqlens for variable-length packed sequences
         cu_seqlens = [0]
         for seq_len in self.sequence_lengths:
             cu_seqlens.append(cu_seqlens[-1] + seq_len)
         cu_seqlens = torch.tensor(cu_seqlens, dtype=torch.int32, device=dev)
+<<<<<<< HEAD
         cu_seqlens_padded = [0]
         for seq_len in self.padded_sequence_lengths:
             cu_seqlens_padded.append(cu_seqlens_padded[-1] + seq_len)
@@ -388,6 +433,11 @@ class MockVariableLengthSequencePackingDataIterator:
         max_seqlen = torch.tensor(
             [max(self.padded_sequence_lengths)], dtype=torch.int32, device=dev
         )
+=======
+        cu_seqlens_padded = cu_seqlens.clone()
+
+        max_seqlen = torch.tensor([max(self.sequence_lengths)], dtype=torch.int32, device=dev)
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         batch = {
             "tokens": tokens,
@@ -416,6 +466,7 @@ class MockVariableLengthSequencePackingDataIterator:
         return batch
 
 
+<<<<<<< HEAD
 class _MockCPGroup:
     def __init__(self, size, rank):
         self._size = size
@@ -730,6 +781,11 @@ def _gather_tensor_from_tp_group(tensor):
     assert tensor is not None, "Tensor should not be None"
     if type(tensor) is int:
         tensor = torch.tensor(tensor, dtype=torch.int32, device=torch.cuda.current_device())
+=======
+def _gather_tensor_from_tp_group(tensor):
+    """Gather tensors from all TP ranks for comparison."""
+    assert tensor is not None, "Tensor should not be None"
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
     gathered = [torch.zeros_like(tensor) for _ in range(tp_size)]
     torch.distributed.all_gather(
@@ -749,6 +805,7 @@ def _gather_tensor_from_all_ranks(tensor):
 
 
 @pytest.mark.parametrize(
+<<<<<<< HEAD
     ("tp", "pp", "cp", "dynamic_cp", "local_cp_size"),
     [
         (1, 1, 1, False, None),  # Basic case: no parallelism
@@ -767,6 +824,21 @@ def _gather_tensor_from_all_ranks(tensor):
     ],
 )
 def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp, dynamic_cp, local_cp_size):
+=======
+    ("tp", "pp", "cp"),
+    [
+        (1, 1, 1),  # Basic case: no parallelism
+        (2, 1, 1),  # Tensor parallel only
+        (1, 2, 1),  # Pipeline parallel only
+        (2, 2, 1),  # TP + PP
+        (1, 1, 2),  # CP only
+        (2, 1, 2),  # TP + CP
+        (1, 2, 2),  # PP + CP
+        (1, 4, 1),  # Has middle pp stage
+    ],
+)
+def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp):
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     """
     Test get_batch_on_this_rank_for_sequence_packing function with variable-length THD format.
 
@@ -789,11 +861,15 @@ def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp, dynamic_cp, loc
         raise ValueError(f"Invalid config: tp={tp}, pp={pp}, cp={cp} exceeds world size 8")
 
     # Initialize model parallel
+<<<<<<< HEAD
     init_kwargs = dict(context_parallel_size=cp)
     if dynamic_cp:
         init_kwargs['dynamic_context_parallel'] = True
         init_kwargs['min_dynamic_context_parallel_size'] = 1
     Utils.initialize_model_parallel(tp, pp, None, **init_kwargs)
+=======
+    Utils.initialize_model_parallel(tp, pp, None, context_parallel_size=cp)
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     try:
         # Create mock data iterator with variable-length sequences
@@ -802,6 +878,7 @@ def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp, dynamic_cp, loc
         if tp_rank == 0:
             # Use deterministic seed based on DP rank so same data within TP/PP/CP group
             dp_rank = parallel_state.get_data_parallel_rank()
+<<<<<<< HEAD
             sequence_lengths = [1000, 2040, 500, 1500, 3000]
             padded_sequence_lengths = [1024, 2048, 512, 1536, 3072]
             assert sum(padded_sequence_lengths) == args.seq_length
@@ -815,10 +892,26 @@ def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp, dynamic_cp, loc
                 )
             )
         else:
+=======
+            sequence_lengths = [1024, 2048, 512, 1536, 3072]
+            assert (
+                sum(sequence_lengths) == args.seq_length
+            ), f"Sequence lengths sum {sum(sequence_lengths)} != total {args.seq_length}"
+            data_iterator = iter(
+                MockVariableLengthSequencePackingDataIterator(
+                    total_seq_length=args.seq_length,
+                    sequence_lengths=sequence_lengths,  # Variable lengths, sum=8192
+                    seed=42 + dp_rank,  # Same seed within PP/CP group
+                )
+            )
+        else:
+            # Non-TP-rank-0 ranks don't need the iterator
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             data_iterator = None
 
         # Call the function under test
         result = get_batch_on_this_rank_for_sequence_packing(
+<<<<<<< HEAD
             data_iterator=data_iterator,
             mtp_on_this_rank=False,
             vp_stage=None,
@@ -843,14 +936,36 @@ def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp, dynamic_cp, loc
             has_padding, op=torch.distributed.ReduceOp.MAX, group=effective_cp_group
         )
         assert has_padding.item(), "Mock data intentionally has padding in each CP group."
+=======
+            data_iterator=data_iterator, mtp_on_this_rank=False, vp_stage=None
+        )
+
+        # Unpack the result. Scheduler THD always returns padding_mask.
+        tokens, labels, loss_mask, attention_mask, position_ids, packed_seq_params, padding_mask = (
+            result
+        )
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         # Get parallel state info
         tp_rank = parallel_state.get_tensor_model_parallel_rank()
         pp_rank = parallel_state.get_pipeline_model_parallel_rank()
+<<<<<<< HEAD
+=======
+        cp_rank = parallel_state.get_context_parallel_rank()
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         is_first_stage = parallel_state.is_pipeline_first_stage(ignore_virtual=True)
         is_last_stage = parallel_state.is_pipeline_last_stage(ignore_virtual=True)
         is_first_or_last = is_first_stage or is_last_stage
 
+<<<<<<< HEAD
+=======
+        assert padding_mask is not None
+        assert padding_mask.dtype == torch.bool
+        assert padding_mask.dim() == 2
+        assert padding_mask.size(0) == 1
+        assert not padding_mask.any(), "Mock data has no per-sequence padding."
+
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         # =====================================================================
         # TEST 1: Verify data based on pipeline stage
         # =====================================================================
@@ -877,6 +992,7 @@ def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp, dynamic_cp, loc
             assert loss_mask is None, "Non-last stage should not have loss_mask"
 
         # =====================================================================
+<<<<<<< HEAD
         # TEST 2: Verify packed_seq_params consistency
         # =====================================================================
         assert packed_seq_params.qkv_format == "thd"
@@ -885,6 +1001,12 @@ def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp, dynamic_cp, loc
             packed_seq_params.cu_seqlens_q, packed_seq_params.cu_seqlens_q_padded
         )
         assert packed_seq_params.cu_seqlens_q[-1] < packed_seq_params.cu_seqlens_q_padded[-1]
+=======
+        # TEST 2: Verify all ranks have consistent packed_seq_params
+        # =====================================================================
+        assert packed_seq_params is not None
+        assert packed_seq_params.qkv_format == "thd"
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         test_keys = [
             "cu_seqlens_q",
@@ -894,6 +1016,7 @@ def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp, dynamic_cp, loc
             "cu_seqlens_kv_padded",
             "max_seqlen_kv",
         ]
+<<<<<<< HEAD
 
         if dynamic_cp:
             assert packed_seq_params.local_cp_size == local_cp_size
@@ -918,12 +1041,26 @@ def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp, dynamic_cp, loc
                     assert torch.equal(
                         gathered_tensor[0], gathered_tensor[i]
                     ), f"Rank 0 and rank {i} have different {key}"
+=======
+        for key in test_keys:
+            tensor = getattr(packed_seq_params, key)
+            assert tensor is not None
+            gathered_tensor = _gather_tensor_from_all_ranks(tensor)
+            for i in range(1, len(gathered_tensor)):
+                assert torch.equal(
+                    gathered_tensor[0], gathered_tensor[i]
+                ), f"Rank 0 and rank {i} have different {key}"
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         # =====================================================================
         # TEST 3: Verify TP ranks receive identical data after broadcast
         # =====================================================================
         if tp > 1:
+<<<<<<< HEAD
             test_tensors = [padding_mask]
+=======
+            test_tensors = []
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             if is_first_stage:
                 test_tensors.extend([tokens, position_ids])
             if is_last_stage:
@@ -939,9 +1076,15 @@ def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp, dynamic_cp, loc
         # =====================================================================
         # TEST 4: Verify CP partitioning
         # =====================================================================
+<<<<<<< HEAD
         effective_cp = local_cp_size if dynamic_cp else cp
         if effective_cp is not None and effective_cp > 1:
             expected_seq_len = args.seq_length // effective_cp
+=======
+        if cp > 1:
+            # With CP, the sequence should be partitioned
+            expected_seq_len = args.seq_length // cp
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
             if is_first_stage:
                 actual_seq_len = tokens.shape[1]
@@ -949,12 +1092,17 @@ def test_get_batch_on_this_rank_for_sequence_packing(tp, pp, cp, dynamic_cp, loc
                     actual_seq_len == expected_seq_len
                 ), f"CP partitioned tokens have wrong shape: {actual_seq_len} != {expected_seq_len}"
 
+<<<<<<< HEAD
+=======
+            # Verify labels only if all CP ranks are at last stage
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             if is_last_stage:
                 actual_seq_len = labels.shape[1]
                 assert (
                     actual_seq_len == expected_seq_len
                 ), f"CP partitioned labels have wrong shape: {actual_seq_len} != {expected_seq_len}"
 
+<<<<<<< HEAD
             actual_seq_len = padding_mask.shape[1]
             assert (
                 actual_seq_len == expected_seq_len
@@ -1216,6 +1364,8 @@ def test_wrap_dataloader(tp, pp, cp, vpp, scheduler_type):
             else:
                 assert new_data_iterator is None
 
+=======
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     finally:
         Utils.destroy_model_parallel()
         unset_global_variables()

@@ -234,6 +234,10 @@ class ModelBuilder(abc.ABC, Generic[ModelT, BuildConfigT]):
         ) = Float16Module,
         model_type: ModelType = ModelType.encoder_or_decoder,
         use_layer_wise_distributed_optimizer: bool = False,
+<<<<<<< HEAD
+=======
+        use_layer_wise_param_layout: bool = True,
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     ) -> list[ModelT]:
         """Build model stages and wrap for distributed training.
 
@@ -247,8 +251,14 @@ class ModelBuilder(abc.ABC, Generic[ModelT, BuildConfigT]):
             data_parallel_random_init: Whether to use data parallel random initialization
             mixed_precision_wrapper: Mixed precision wrapper, e.g. ``Float16Module``
             model_type: Deprecated flag, only used for backwards compatibility.
+<<<<<<< HEAD
             use_layer_wise_distributed_optimizer: Whether DDP should route and lay out
                 parameters for the layer-wise distributed optimizer.
+=======
+            use_layer_wise_distributed_optimizer: Whether the layerwise wiring runs.
+            use_layer_wise_param_layout: When ``use_layer_wise_distributed_optimizer=True``,
+                controls whether to compute and supply a shard-aligned param layout to DDP.
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         Returns:
             List of model stages. If the model does not support virtual pipeline parallelism,

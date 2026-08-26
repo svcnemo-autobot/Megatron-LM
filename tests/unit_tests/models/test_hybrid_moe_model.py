@@ -110,16 +110,23 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "embedding_init_method_std": 0.014,
     "enable_autocast": False,
     "enable_cuda_graph": False,
+<<<<<<< HEAD
     "enable_hyper_connections": False,
+=======
+    "enable_mhc_connections": False,
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     "ep_overlap_early_attn_memory_release": False,
     "experimental_attention_variant": None,
     "experimental_attention_variant_loss_scale_func": None,
     "expert_model_parallel_size": 4,
+    "expert_gtp_weight_remat_size": 1,
+    "expert_tensor_parallel_num_weight_shards": 1,
     "expert_tensor_parallel_size": 1,
     "external_cuda_graph": False,
     "ffn_hidden_size": 1856,
     "finalize_model_grads_func": None,
     "first_last_layers_bf16": False,
+    "flash_attention_version": None,
     "flash_decode": False,
     "fp16": False,
     "fp32_residual_connection": False,
@@ -143,6 +150,11 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "fused_single_qkv_rope": False,
     "gated_attention_proj_granularity": "elementwise",
     "gated_linear_unit": False,
+    "gdp_cutedsl_kernel": False,
+    "gdp_num_chunk_states_to_recompute": 2,
+    "gdp_num_householder": 3,
+    "gtp_remat_opt_in_modules": [],
+    "gtp_weight_remat_size": 1,
     "glu_linear_offset": 0.0,
     "grad_scale_func": None,
     "mtp_grad_scale_func": None,
@@ -186,7 +198,10 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "masked_softmax_fusion": True,
     "memory_efficient_layer_norm": False,
     "mhc_init_gating_factor": 0.01,
+<<<<<<< HEAD
     "mhc_recompute_attn_cuda_graph_split": False,
+=======
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     "mhc_recompute_layer_num": None,
     "mhc_sinkhorn_iterations": 20,
     "microbatch_group_size_per_vp_stage": 1,
@@ -202,6 +217,7 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "moe_flex_dispatcher_num_sms": None,
     "moe_grad_scale_func": None,
     "moe_grouped_gemm": True,
+    "moe_use_grouped_tensor": False,
     "moe_hybridep_num_sms": None,
     "moe_hybridep_num_sms_preprocessing": 108,
     "moe_hybridep_num_blocks_permute": None,
@@ -210,9 +226,13 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "moe_latent_size": None,
     "moe_layer_freq": 1,
     "moe_layer_recompute": False,
+<<<<<<< HEAD
     "moe_n_hash_layers": 0,
     "moe_ncclep_static_shape": False,
     "moe_ncclep_use_symm_mem": False,
+=======
+    "moe_ncclep_zero_copy": False,
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     "moe_pad_expert_input_to_capacity": False,
     "moe_pad_experts_for_cuda_graph_inference": False,
     "moe_paged_stash": False,
@@ -233,6 +253,7 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "moe_router_padding_for_fp8": False,
     "moe_router_padding_for_quantization": False,
     "moe_router_pre_softmax": False,
+    "moe_router_quantile_balancing_ema": 0.0,
     "moe_router_score_function": "sigmoid",
     "moe_router_topk": 6,
     "moe_router_topk_limited_devices": None,
@@ -275,7 +296,11 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "num_microbatches_with_partial_activation_checkpoints": None,
     "num_moe_experts": 128,
     "num_query_groups": 2,
+<<<<<<< HEAD
     "num_residual_streams": 4,
+=======
+    "mhc_num_residual_streams": 4,
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     "output_layer_init_method": {},
     "overlap_moe_expert_parallel_comm": False,
     "overlap_p2p_comm": False,
@@ -305,6 +330,7 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "softmax_type": "vanilla",
     "symmetric_ar_type": None,
     "tensor_model_parallel_size": 2,
+    "tensor_parallel_num_weight_shards": 2,
     "test_mode": False,
     "thd_max_packed_sequences": None,
     "timers": None,
@@ -369,8 +395,12 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "use_transformer_engine_op_fuser": False,
     "moe_single_grouped_weight": False,
     "moe_single_grouped_bias": False,
+<<<<<<< HEAD
     "head_wise_attn_gate": False,
     "moe_hybridep_pad_variable_tokens": False,
+=======
+    "moe_hybridep_pad_uneven_dispatch_inputs": False,
+>>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 }
 # Fields to ignore entirely (ephemeral, environment-specific, very large).
 SKIP_FIELDS = set()
