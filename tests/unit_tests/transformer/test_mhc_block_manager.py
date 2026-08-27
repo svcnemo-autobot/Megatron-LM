@@ -5,25 +5,14 @@ import torch
 
 from megatron.core.tensor_parallel.random import (
     CheckpointWithoutOutput,
-<<<<<<< HEAD
     MHCCheckpointManager,
     initialize_rng_tracker,
 )
-=======
-    CheckpointWithoutOutputManager,
-    initialize_rng_tracker,
-)
-from megatron.core.transformer.hyper_connection import build_mhc_recompute_layer_plan
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 from tests.unit_tests.test_utilities import Utils
 
 
 class TestCheckpointWithoutOutputManagerAPI:
-<<<<<<< HEAD
     """Test CheckpointWithoutOutput integration with MHCCheckpointManager."""
-=======
-    """Test CheckpointWithoutOutput integration with CheckpointWithoutOutputManager."""
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     def setup_method(self, method):
         Utils.initialize_model_parallel()
@@ -34,11 +23,7 @@ class TestCheckpointWithoutOutputManagerAPI:
 
     def test_auto_register(self):
         """CheckpointWithoutOutput auto-registers to manager when ckpt_manager is provided."""
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
-=======
-        manager = CheckpointWithoutOutputManager()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         def func(x):
             return x * 2 + 1
@@ -65,11 +50,7 @@ class TestCheckpointWithoutOutputManagerAPI:
 
     def test_discard_is_noop_with_manager(self):
         """discard_output_and_register_recompute is a NO-OP when ckpt_manager is set."""
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
-=======
-        manager = CheckpointWithoutOutputManager()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         def func1(x):
             return x * 2
@@ -137,13 +118,8 @@ class TestCheckpointWithoutOutputManagerAPI:
         assert torch.allclose(grad_ckpt, grad_ref, atol=1e-6)
 
     def test_error_handling(self):
-<<<<<<< HEAD
         """MHCCheckpointManager rejects invalid add_checkpoint calls."""
         manager = MHCCheckpointManager()
-=======
-        """CheckpointWithoutOutputManager rejects invalid add_checkpoint calls."""
-        manager = CheckpointWithoutOutputManager()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         with pytest.raises(TypeError):
             manager.add_checkpoint("not a checkpoint")
@@ -154,11 +130,7 @@ class TestCheckpointWithoutOutputManagerAPI:
 
 
 class TestCheckpointManagerSequentialChain:
-<<<<<<< HEAD
     """Test MHCCheckpointManager with sequential checkpoint chains."""
-=======
-    """Test CheckpointWithoutOutputManager with sequential checkpoint chains."""
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     def setup_method(self, method):
         Utils.initialize_model_parallel()
@@ -189,11 +161,7 @@ class TestCheckpointManagerSequentialChain:
         loss_ref.backward()
         grad_ref = input_ref.grad.clone()
 
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
-=======
-        manager = CheckpointWithoutOutputManager()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         y1 = CheckpointWithoutOutput(ckpt_manager=manager).checkpoint(func1, input_ckpt)
         y2 = CheckpointWithoutOutput(ckpt_manager=manager).checkpoint(func2, y1)
@@ -237,11 +205,7 @@ class TestCheckpointManagerSequentialChain:
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)
 
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
-=======
-        manager = CheckpointWithoutOutputManager()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         y1 = CheckpointWithoutOutput(ckpt_manager=manager).checkpoint(func_with_dropout, input_ckpt)
         y2 = CheckpointWithoutOutput(ckpt_manager=manager).checkpoint(func2, y1)
@@ -257,11 +221,7 @@ class TestCheckpointManagerSequentialChain:
         ), f"Gradients with dropout mismatch!\nWith manager: {grad_ckpt}\nReference: {grad_ref}"
 
     def test_multiple_outputs(self):
-<<<<<<< HEAD
         """MHCCheckpointManager handles functions that return multiple outputs."""
-=======
-        """CheckpointWithoutOutputManager handles functions that return multiple outputs."""
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         def func_multi_output(x):
             return x * 2, x + 1
@@ -278,11 +238,7 @@ class TestCheckpointManagerSequentialChain:
         loss_ref.backward()
         grad_ref = input_ref.grad.clone()
 
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
-=======
-        manager = CheckpointWithoutOutputManager()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         y1a, y1b = CheckpointWithoutOutput(ckpt_manager=manager).checkpoint(
             func_multi_output, input_ckpt
@@ -302,11 +258,7 @@ class TestCheckpointManagerSequentialChain:
 
 
 class TestCheckpointManagerPartialCheckpoint:
-<<<<<<< HEAD
     """Test MHCCheckpointManager with partial checkpointing (some ops not checkpointed)."""
-=======
-    """Test CheckpointWithoutOutputManager with partial checkpointing (some ops not checkpointed)."""
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     def setup_method(self, method):
         Utils.initialize_model_parallel()
@@ -343,11 +295,7 @@ class TestCheckpointManagerPartialCheckpoint:
 
         input_ckpt = input_ref.detach().clone().requires_grad_(True)
 
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
-=======
-        manager = CheckpointWithoutOutputManager()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         b = CheckpointWithoutOutput(ckpt_manager=manager).checkpoint(func_f, input_ckpt)
         c = func_g(b)
@@ -410,11 +358,7 @@ class TestCheckpointManagerPartialCheckpoint:
         x_ckpt = x_ref.detach().clone().requires_grad_(True)
         residual_ckpt = residual_ref.detach().clone().requires_grad_(True)
 
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
-=======
-        manager = CheckpointWithoutOutputManager()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         h_pre, h_post, h_res = CheckpointWithoutOutput(ckpt_manager=manager).checkpoint(
             compute_mappings, x_ckpt
@@ -451,138 +395,3 @@ class TestCheckpointManagerPartialCheckpoint:
             f"Gradients for residual mismatch!\n"
             f"With manager: {grad_residual_ckpt}\nReference: {grad_residual_ref}"
         )
-<<<<<<< HEAD
-=======
-
-
-# ============================================================================
-# Block-level mHC recompute coverage
-# ============================================================================
-#
-# These tests instantiate a full ``TransformerBlock`` with mHC enabled to
-# exercise:
-#   * ``build_mhc_recompute_layer_plan`` (per-layer ``CheckpointWithoutOutputManager``
-#     allocation, including the ``mhc_recompute_layer_num`` boundary case),
-#   * ``finalize_mhc_recompute_layer`` (manager finalization at block end),
-#   * the ``HyperConnectionModule.input_expand`` / ``output_contract`` calls
-#     in ``TransformerBlock.forward`` for ``pre_process`` / ``post_process``
-#     stages.
-#
-# Single-process (no PP) so they can run on a single-GPU CI lane.
-
-
-class TestTransformerBlockMHCRecompute:
-    """End-to-end ``TransformerBlock`` forward with mHC selective recompute."""
-
-    def setup_method(self, method):
-        from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
-
-        Utils.initialize_model_parallel(1, 1)
-        model_parallel_cuda_manual_seed(123)
-
-    def teardown_method(self, method):
-        Utils.destroy_model_parallel()
-
-    @staticmethod
-    def _make_mhc_block(num_layers, num_streams=4, mhc_recompute_layer_num=None):
-        from megatron.core.models.gpt.gpt_layer_specs import (
-            get_gpt_layer_with_transformer_engine_spec,
-        )
-        from megatron.core.transformer.hyper_connection import HyperConnectionModule
-        from megatron.core.transformer.transformer_block import TransformerBlock
-        from megatron.core.transformer.transformer_config import TransformerConfig
-        from megatron.core.transformer.transformer_layer import HyperConnectionTransformerLayer
-
-        config = TransformerConfig(
-            num_layers=num_layers,
-            hidden_size=64,
-            num_attention_heads=4,
-            use_cpu_initialization=True,
-            enable_mhc_connections=True,
-            mhc_num_residual_streams=num_streams,
-            mhc_sinkhorn_iterations=5,
-            mhc_init_gating_factor=0.01,
-            mhc_recompute_layer_num=mhc_recompute_layer_num,
-            recompute_granularity='selective',
-            recompute_modules=['mhc'],
-            hidden_dropout=0.0,
-            attention_dropout=0.0,
-        )
-        spec = get_gpt_layer_with_transformer_engine_spec()
-        spec.module = HyperConnectionTransformerLayer
-        spec.submodules.self_attention_hyper_connection = HyperConnectionModule
-        spec.submodules.mlp_hyper_connection = HyperConnectionModule
-        return TransformerBlock(config, spec, pre_process=True, post_process=True).cuda(), config
-
-    def _check_recompute_plan(self, block, expected_block_ends):
-        """Build the mHC recompute plan directly and check the boundary list."""
-        block.train()
-        managers, ends = build_mhc_recompute_layer_plan(
-            num_layers=len(block.layers),
-            mhc_recompute_layer_num=block.config.mhc_recompute_layer_num,
-            use_mhc_recompute=True,
-        )
-        assert len(managers) == len(block.layers)
-        assert ends == expected_block_ends, f"got {ends}, expected {expected_block_ends}"
-        # Layers in the same recompute block share a manager; new block → new manager.
-        last_was_end = True
-        last_mgr = None
-        for mgr, end in zip(managers, ends):
-            assert mgr is not None
-            if last_was_end:
-                assert mgr is not last_mgr, "new recompute block should get a new manager"
-            else:
-                assert mgr is last_mgr, "layers within a recompute block share a manager"
-            last_was_end = end
-            last_mgr = mgr
-
-    def test_recompute_plan_no_layer_num(self):
-        """Without ``mhc_recompute_layer_num`` only the final layer ends a recompute block."""
-        block, _ = self._make_mhc_block(num_layers=4)
-        self._check_recompute_plan(block, expected_block_ends=[False, False, False, True])
-
-    def test_recompute_plan_with_layer_num(self):
-        """With ``mhc_recompute_layer_num=2`` every other layer ends a recompute block."""
-        block, _ = self._make_mhc_block(num_layers=4, mhc_recompute_layer_num=2)
-        self._check_recompute_plan(block, expected_block_ends=[False, True, False, True])
-
-    def test_recompute_plan_disabled(self):
-        """``use_mhc_recompute=False`` returns an all-None / all-False plan."""
-        block, _ = self._make_mhc_block(num_layers=3)
-        managers, ends = build_mhc_recompute_layer_plan(
-            num_layers=len(block.layers),
-            mhc_recompute_layer_num=block.config.mhc_recompute_layer_num,
-            use_mhc_recompute=False,
-        )
-        assert managers == [None, None, None]
-        assert ends == [False, False, False]
-
-    def test_recompute_enablement_initialized(self):
-        """TransformerBlock records static mHC recompute enablement during initialization."""
-        block, _ = self._make_mhc_block(num_layers=2)
-        assert block.mhc_recompute_enabled
-
-    def test_block_forward_input_expand_output_contract(self):
-        """Forward exercises ``input_expand`` (pre) and ``output_contract`` (post)."""
-        block, config = self._make_mhc_block(num_layers=2, mhc_recompute_layer_num=2)
-        block.train()
-
-        seq_len = 8
-        batch_size = 2
-        # Input is [s, b, hidden_size]; the block must expand to [s, b, n*hidden_size]
-        # internally, then contract back to [s, b, hidden_size] before final layernorm.
-        hidden_states = torch.randn(
-            seq_len, batch_size, config.hidden_size, device='cuda', requires_grad=True
-        )
-        attention_mask = torch.ones((1, 1, seq_len, seq_len), dtype=torch.bool, device='cuda')
-
-        out = block(hidden_states=hidden_states, attention_mask=attention_mask)
-        assert out.shape == hidden_states.shape, (
-            f"output_contract should restore original shape, got {tuple(out.shape)} "
-            f"vs expected {tuple(hidden_states.shape)}"
-        )
-        # Backward should flow through the recompute path without error.
-        out.sum().backward()
-        assert hidden_states.grad is not None
-        assert torch.isfinite(hidden_states.grad).all()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b

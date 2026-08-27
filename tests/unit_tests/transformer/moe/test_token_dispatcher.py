@@ -8,23 +8,11 @@ import torch
 import torch.nn.functional as F
 
 from megatron.core import config, parallel_state
-<<<<<<< HEAD
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_local_submodules
 from megatron.core.transformer.moe.fused_a2a import HYBRIDEP_TOKEN_ALIGNMENT, reset_hybrid_ep_buffer
 from megatron.core.transformer.moe.moe_layer import MoELayer, MoESubmodules
 from megatron.core.transformer.moe.moe_utils import get_capacity
 from megatron.core.transformer.moe.token_dispatcher import MoETokenDispatcher, _HybridEPManager
-=======
-from megatron.core.fp8_utils import get_fp8_context
-from megatron.core.models.gpt.gpt_layer_specs import (
-    get_gpt_layer_local_submodules,
-    get_gpt_layer_with_transformer_engine_spec,
-)
-from megatron.core.transformer.moe.fused_a2a import HYBRIDEP_TOKEN_ALIGNMENT, reset_hybrid_ep_buffer
-from megatron.core.transformer.moe.moe_layer import MoELayer, MoESubmodules
-from megatron.core.transformer.moe.moe_utils import get_capacity
-from megatron.core.transformer.moe.token_dispatcher import _HybridEPManager
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 from megatron.core.transformer.spec_utils import get_submodules
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.typed_torch import apply_module
@@ -600,7 +588,6 @@ def is_nccl_ep_available():
     return HAVE_TE_EP
 
 
-<<<<<<< HEAD
 def skip_if_flex_backend_unavailable(moe_flex_dispatcher_backend):
     if moe_flex_dispatcher_backend == "deepep" and not is_deep_ep_available():
         pytest.skip("Deep EP is not available")
@@ -610,91 +597,6 @@ def skip_if_flex_backend_unavailable(moe_flex_dispatcher_backend):
         pytest.skip("Hybrid EP is not available")
     if moe_flex_dispatcher_backend == "ncclep" and not is_nccl_ep_available():
         pytest.skip("NCCL EP is not available")
-=======
-def is_nccl_ep_zero_copy_available():
-    """Zero-copy needs the newer TE symm-mem APIs (symm_mem_alloc/is_symm_backed), which a plain
-    NCCL-EP build lacks -- gate zero-copy tests on these separately from is_nccl_ep_available()."""
-    if not is_nccl_ep_available():
-        return False
-    try:
-        from transformer_engine.pytorch.ep import is_symm_backed, symm_mem_alloc  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
-def is_op_fuser_available():
-    """The static-shape/zero-copy path runs the TE op-fuser grouped GEMM (needs TE>=2.14 ops)."""
-    try:
-        from transformer_engine.pytorch.ops import GroupedLinear, ScaledSwiGLU  # noqa: F401
-    except ImportError:
-        return False
-    return is_te_min_version("2.14.0")
-
-
-def is_nccl_ep_fp8_dispatch_available():
-    """MXFP8 wire dtypes need a TE build whose EpBuffer takes the quant recipes AND that returns
-    the plain-tensor MXFP8 carrier (mxfp8_carrier_to_grouped, TE PR #3355 -- older quant-recipe
-    builds return a GroupedTensor payload the op-fuser attrs cannot rebuild), plus MXFP8 hardware
-    support (Blackwell) for the quantize kernels and the grouped GEMM."""
-    if not is_nccl_ep_available():
-        return False
-    import inspect
-
-    try:
-        import transformer_engine.pytorch.ep as te_ep
-        from transformer_engine.pytorch.fp8 import check_mxfp8_support
-    except ImportError:
-        return False
-    if "dispatch_fwd_quant_recipe" not in inspect.signature(te_ep.EpBuffer).parameters:
-        return False
-    if not hasattr(te_ep, "mxfp8_carrier_to_grouped"):
-        return False
-    return check_mxfp8_support()[0]
-
-
-def test_hybridep_pad_uneven_dispatch_inputs_metadata(monkeypatch):
-    manager = _HybridEPManager.__new__(_HybridEPManager)
-    manager.group = object()
-    manager.num_local_experts = 2
-    manager.num_experts = 4
-    manager.config = TransformerConfig(
-        num_layers=1,
-        hidden_size=16,
-        num_attention_heads=4,
-        num_moe_experts=4,
-        moe_router_topk=2,
-        moe_hybridep_pad_uneven_dispatch_inputs=True,
-    )
-    manager.moe_expert_rank_capacity_factor = None
-    manager.drop_and_pad = False
-
-    local_num_tokens = 17
-    max_num_tokens_across_ep = 70
-    padded_num_tokens = (
-        max_num_tokens_across_ep + -max_num_tokens_across_ep % HYBRIDEP_TOKEN_ALIGNMENT
-    )
-    routing_map = torch.ones((local_num_tokens, manager.num_experts), dtype=torch.bool)
-    probs = torch.ones((local_num_tokens, manager.num_experts), dtype=torch.float32)
-
-    def fake_all_reduce(tensor, op=None, group=None):
-        assert op == torch.distributed.ReduceOp.MAX
-        assert group is manager.group
-        tensor.fill_(max_num_tokens_across_ep)
-
-    monkeypatch.setattr(torch.distributed, "all_reduce", fake_all_reduce)
-
-    manager.setup_metadata(routing_map, probs)
-
-    assert manager._original_num_tokens == local_num_tokens
-    assert manager._padded_num_tokens == padded_num_tokens
-    assert manager.routing_map.shape == (padded_num_tokens, manager.num_experts)
-    assert manager.token_probs.shape == (padded_num_tokens, manager.num_experts)
-    torch.testing.assert_close(manager.routing_map[:local_num_tokens], routing_map)
-    torch.testing.assert_close(manager.token_probs[:local_num_tokens], probs)
-    assert not manager.routing_map[local_num_tokens:].any()
-    assert not manager.token_probs[local_num_tokens:].any()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 
 @pytest.mark.skipif(
@@ -714,17 +616,7 @@ class TestFlexDispatcher:
     @pytest.mark.parametrize("tp_size,ep_size", [(1, 8), (8, 1), (4, 2)])
     @pytest.mark.parametrize("permute_fusion", permute_fusion_params)
     @pytest.mark.parametrize(
-<<<<<<< HEAD
         "moe_flex_dispatcher_backend", ["deepep", "deepepv2", "hybridep", "ncclep"]
-=======
-        "moe_flex_dispatcher_backend",
-        [
-            "deepep",
-            "hybridep",
-            # NCCL EP aborts in dev CI with a pybind11 GIL dec_ref failure.
-            pytest.param("ncclep", marks=pytest.mark.flaky_in_dev),
-        ],
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     )
     @pytest.mark.parametrize("moe_permute_fusion_into_hybridep", [True, False])
     def test_forward_backward(

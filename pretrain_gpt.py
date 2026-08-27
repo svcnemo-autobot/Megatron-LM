@@ -43,8 +43,8 @@ from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegat
 from megatron.core.datasets.data_schedule import get_batch_on_this_rank_for_sequence_packing
 from megatron.core.datasets.gpt_dataset import GPTDataset, GPTDatasetConfig, MockGPTDataset
 from megatron.core.enums import ModelType
-from megatron.core.package_info import __version__ as mcore_version
 from megatron.core.models.gpt import GPTModel
+from megatron.core.package_info import __version__ as mcore_version
 from megatron.core.packed_seq_params import (
     PackedSeqParams,
     get_thd_padding_kwargs,
@@ -57,14 +57,7 @@ from megatron.core.transformer.multi_token_prediction import get_mtp_ranks, mtp_
 from megatron.core.utils import (
     StragglerDetector,
     get_attr_wrapped_model,
-<<<<<<< HEAD
     get_thd_batch_on_this_cp_rank,
-=======
-    get_batch_on_this_cp_rank,
-    get_batch_on_this_tp_rank,
-    get_te_version,
-    get_torch_version,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 )
 from megatron.training import (
     get_args,
@@ -208,15 +201,7 @@ def get_batch(data_iterator, vp_stage: Optional[int] = None):
             qkv_format='thd',
         )
         finalize_packed_seq_params(packed_seq_params)
-        return (
-            None,
-            None,
-            None,
-            None,
-            None,
-            packed_seq_params,
-            None,
-        )
+        return (None, None, None, None, None, packed_seq_params, None)
 
     thd_tail_padding_policy = resolve_thd_tail_padding_policy(config)
     if cu_seqlens is None:
@@ -601,17 +586,7 @@ if __name__ == "__main__":
         extra_args_provider=add_modelopt_args if has_nvidia_modelopt else None,
         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
     )
-<<<<<<< HEAD
     full_config = pretrain_cfg_container_from_args(args)
-=======
-    if has_nvidia_modelopt:
-        maybe_enable_modelopt(args)
-    if has_nvidia_modelopt and getattr(args, "modelopt_enabled", False):
-        model_cfg = gpt_config_from_args(args, model_config_cls=ModelOptModelConfig)
-    else:
-        model_cfg = gpt_config_from_args(args)
-    full_config = pretrain_cfg_container_from_args(args, model_cfg)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     pretrain(
         full_config,
         train_valid_test_datasets_provider,
