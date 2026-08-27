@@ -57,14 +57,7 @@ from megatron.core.transformer.multi_token_prediction import get_mtp_ranks, mtp_
 from megatron.core.utils import (
     StragglerDetector,
     get_attr_wrapped_model,
-<<<<<<< HEAD
     get_thd_batch_on_this_cp_rank,
-=======
-    get_batch_on_this_cp_rank,
-    get_batch_on_this_tp_rank,
-    get_te_version,
-    get_torch_version,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 )
 from megatron.training import (
     get_args,
@@ -601,17 +594,7 @@ if __name__ == "__main__":
         extra_args_provider=add_modelopt_args if has_nvidia_modelopt else None,
         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},
     )
-<<<<<<< HEAD
     full_config = pretrain_cfg_container_from_args(args)
-=======
-    if has_nvidia_modelopt:
-        maybe_enable_modelopt(args)
-    if has_nvidia_modelopt and getattr(args, "modelopt_enabled", False):
-        model_cfg = gpt_config_from_args(args, model_config_cls=ModelOptModelConfig)
-    else:
-        model_cfg = gpt_config_from_args(args)
-    full_config = pretrain_cfg_container_from_args(args, model_cfg)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     pretrain(
         full_config,
         train_valid_test_datasets_provider,

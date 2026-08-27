@@ -162,10 +162,6 @@ async def run_text_generation_server(
     coordinator_port: int,
     server_port: int,
     hostname: str | None = None,
-<<<<<<< HEAD
-=======
-    chat_template: str | None = None,
->>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
 ):
     """
     Runs the text generation server from rank 0 and initializes the
@@ -306,15 +302,7 @@ if __name__ == "__main__":
         try:
             asyncio.run(
                 run_text_generation_server(
-<<<<<<< HEAD
                     engine, args.inference_coordinator_port, args.port, args.host
-=======
-                    engine,
-                    args.inference_coordinator_port,
-                    args.port,
-                    args.host,
-                    chat_template=chat_template,
->>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
                 )
             )
         except KeyboardInterrupt:

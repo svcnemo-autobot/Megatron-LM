@@ -347,16 +347,7 @@ class TestFP8Param:
             and args.overlap_param_gather
         )
 
-<<<<<<< HEAD
         for i in range(num_steps):
-=======
-        # Optional: generate the sharded_state_dict (the checkpoint-save metadata path) at these
-        # steps to catch save side-effects on the live weights — a correct save must not perturb
-        # the subsequent training step (regression guard for GTP native-FP8 save corruption).
-        save_at_steps = set(save_at_steps_kw or ())
-
-        for i in range(100):
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             if not inference:
                 if args.chunked_optimizer_state_offload:
                     optimizer.offload_optimizer_state_for_forward(

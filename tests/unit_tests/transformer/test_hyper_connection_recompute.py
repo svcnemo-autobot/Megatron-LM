@@ -5,18 +5,12 @@ Unit tests for HyperConnection block-level recomputation.
 
 Tests the following functionality:
 1. HyperConnectionModule._forward_with_checkpoint correctness
-<<<<<<< HEAD
 2. HyperConnectionModule.apply_h_post with MHCCheckpointManager
 3. Multiple HyperConnectionModules chained with a single MHCCheckpointManager
-=======
-2. HyperConnectionModule.apply_h_post with CheckpointWithoutOutputManager
-3. Multiple HyperConnectionModules chained with a single CheckpointWithoutOutputManager
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 4. Partial checkpoint (last layer not checkpointed)
 5. TransformerConfig 'mhc' in recompute_modules option
 """
 
-<<<<<<< HEAD
 import types
 
 import pytest
@@ -39,21 +33,6 @@ from tests.unit_tests.test_utilities import Utils
 
 
 class TestHyperConnectionCheckpoint:
-=======
-import pytest
-import torch
-
-from megatron.core.tensor_parallel.random import (
-    CheckpointWithoutOutputManager,
-    model_parallel_cuda_manual_seed,
-)
-from megatron.core.transformer.hyper_connection import HyperConnectionModule
-from megatron.core.transformer.transformer_config import TransformerConfig
-from tests.unit_tests.test_utilities import Utils
-
-
-class TestHyperConnectionModuleCheckpoint:
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     """Test HyperConnectionModule checkpoint functionality."""
 
     def setup_method(self, method):
@@ -63,24 +42,15 @@ class TestHyperConnectionModuleCheckpoint:
     def teardown_method(self, method):
         Utils.destroy_model_parallel()
 
-<<<<<<< HEAD
     def _create_hyper_connection_module(self, hidden_size=64, num_residual_streams=4):
-=======
-    def _create_hyper_connection_module(self, hidden_size=64, mhc_num_residual_streams=4):
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         """Create a HyperConnectionModule for testing."""
         config = TransformerConfig(
             num_layers=2,
             hidden_size=hidden_size,
             num_attention_heads=4,
             use_cpu_initialization=True,
-<<<<<<< HEAD
             enable_hyper_connections=True,
             num_residual_streams=num_residual_streams,
-=======
-            enable_mhc_connections=True,
-            mhc_num_residual_streams=mhc_num_residual_streams,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             mhc_sinkhorn_iterations=5,  # Fewer iterations for faster tests
             mhc_init_gating_factor=0.01,
         )
@@ -88,7 +58,6 @@ class TestHyperConnectionModuleCheckpoint:
         module.cuda()
         return module
 
-<<<<<<< HEAD
     def test_apply_h_res_uses_h_res_transpose(self):
         """apply_h_res should compute H_res.T @ residual."""
         module = self._create_hyper_connection_module(hidden_size=4, num_residual_streams=2)
@@ -118,8 +87,6 @@ class TestHyperConnectionModuleCheckpoint:
         assert hidden_states.grad is not None
         assert module.mapping_proj.weight.grad is not None
 
-=======
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     def test_forward_normal_vs_checkpoint_correctness(self):
         """
         Test that _forward_with_checkpoint produces the same outputs as _forward_normal.
@@ -146,11 +113,7 @@ class TestHyperConnectionModuleCheckpoint:
         # Forward without checkpoint (reference)
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)
-<<<<<<< HEAD
         aggregated_ref, h_res_ref, h_post_ref, residual_ref = module._forward_normal(hidden_states)
-=======
-        aggregated_ref, h_res_ref, h_post_ref = module._forward_normal(hidden_states)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         mixed_ref = module.apply_h_res(h_res_ref, residual)
         loss_ref = aggregated_ref.sum() + mixed_ref.sum() + h_post_ref.sum()
         loss_ref.backward()
@@ -160,15 +123,9 @@ class TestHyperConnectionModuleCheckpoint:
         # Forward with checkpoint
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
         aggregated_ckpt, h_res_ckpt, h_post_ckpt, residual_ckpt_out = (
             module._forward_with_checkpoint(hidden_states_ckpt, manager)
-=======
-        manager = CheckpointWithoutOutputManager()
-        aggregated_ckpt, h_res_ckpt, h_post_ckpt = module._forward_with_checkpoint(
-            hidden_states_ckpt, manager
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         )
         mixed_ckpt = module.apply_h_res(h_res_ckpt, residual_ckpt)
         # Calculate loss before discarding outputs
@@ -226,11 +183,7 @@ class TestHyperConnectionModuleCheckpoint:
 
         # With checkpoint (manager provided)
         torch.manual_seed(42)
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
-=======
-        manager = CheckpointWithoutOutputManager()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         x_out_ckpt, bias_out_ckpt = module.apply_h_post(
             (x_ckpt, bias), h_post_ckpt, manager=manager
         )
@@ -269,11 +222,7 @@ class TestHyperConnectionModuleCheckpoint:
         # Reference: forward without manager (uses _forward_normal)
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)
-<<<<<<< HEAD
         aggregated_ref, h_res_ref, h_post_ref, _ = module.forward(
-=======
-        aggregated_ref, h_res_ref, h_post_ref = module.forward(
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             hidden_states, mhc_recompute_manager=None
         )
         loss_ref = aggregated_ref.sum() + h_res_ref.sum() + h_post_ref.sum()
@@ -283,13 +232,8 @@ class TestHyperConnectionModuleCheckpoint:
         # With manager (uses _forward_with_checkpoint)
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
         aggregated_ckpt, h_res_ckpt, h_post_ckpt, _ = module.forward(
-=======
-        manager = CheckpointWithoutOutputManager()
-        aggregated_ckpt, h_res_ckpt, h_post_ckpt = module.forward(
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             hidden_states_ckpt, mhc_recompute_manager=manager
         )
         loss_ckpt = aggregated_ckpt.sum() + h_res_ckpt.sum() + h_post_ckpt.sum()
@@ -303,11 +247,7 @@ class TestHyperConnectionModuleCheckpoint:
 
 
 class TestMHCBlockRecomputeIntegration:
-<<<<<<< HEAD
     """Test MHCCheckpointManager integration with HyperConnection."""
-=======
-    """Test CheckpointWithoutOutputManager integration with HyperConnection."""
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     def setup_method(self, method):
         Utils.initialize_model_parallel(1, 1)
@@ -319,11 +259,7 @@ class TestMHCBlockRecomputeIntegration:
     def test_multiple_hyper_connections_in_chain(self):
         """
         Test that multiple HyperConnectionModules can be chained together
-<<<<<<< HEAD
         with a single MHCCheckpointManager.
-=======
-        with a single CheckpointWithoutOutputManager.
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         """
         hidden_size = 64
         num_streams = 4
@@ -337,13 +273,8 @@ class TestMHCBlockRecomputeIntegration:
             hidden_size=hidden_size,
             num_attention_heads=4,
             use_cpu_initialization=True,
-<<<<<<< HEAD
             enable_hyper_connections=True,
             num_residual_streams=num_streams,
-=======
-            enable_mhc_connections=True,
-            mhc_num_residual_streams=num_streams,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             mhc_sinkhorn_iterations=5,
             mhc_init_gating_factor=0.01,
         )
@@ -370,11 +301,7 @@ class TestMHCBlockRecomputeIntegration:
         h = hidden_states_ref
         r = residual_ref
         for module in modules:
-<<<<<<< HEAD
             agg, h_res, h_post, _ = module.forward(h, mhc_recompute_manager=None)
-=======
-            agg, h_res, h_post = module.forward(h, mhc_recompute_manager=None)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             agg, _ = module.apply_h_post((0.1 * agg, None), h_post, manager=None)
             mixed = module.apply_h_res(h_res, r)  # Apply h_res to get mixed [s, b, n*C]
             h = agg + mixed
@@ -389,20 +316,12 @@ class TestMHCBlockRecomputeIntegration:
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)
 
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
-=======
-        manager = CheckpointWithoutOutputManager()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         h = hidden_states_ckpt
         r = residual_ckpt
         for module in modules:
-<<<<<<< HEAD
             agg, h_res, h_post, _ = module.forward(h, mhc_recompute_manager=manager)
-=======
-            agg, h_res, h_post = module.forward(h, mhc_recompute_manager=manager)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             agg, _ = module.apply_h_post((0.1 * agg, None), h_post, manager=manager)
             mixed = module.apply_h_res(h_res, r)  # Apply h_res to get mixed [s, b, n*C]
             h = agg + mixed
@@ -439,13 +358,8 @@ class TestMHCBlockRecomputeIntegration:
             hidden_size=hidden_size,
             num_attention_heads=4,
             use_cpu_initialization=True,
-<<<<<<< HEAD
             enable_hyper_connections=True,
             num_residual_streams=num_streams,
-=======
-            enable_mhc_connections=True,
-            mhc_num_residual_streams=num_streams,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             mhc_sinkhorn_iterations=5,
             mhc_init_gating_factor=0.01,
         )
@@ -465,11 +379,7 @@ class TestMHCBlockRecomputeIntegration:
         # Reference
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)
-<<<<<<< HEAD
         aggregated_ref, h_res_ref, h_post_ref, _ = module.forward(
-=======
-        aggregated_ref, h_res_ref, h_post_ref = module.forward(
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             hidden_states_ref, mhc_recompute_manager=None
         )
         aggregated_ref, _ = module.apply_h_post(
@@ -487,13 +397,8 @@ class TestMHCBlockRecomputeIntegration:
         # With manager - checkpoint everything except final output
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)
-<<<<<<< HEAD
         manager = MHCCheckpointManager()
         aggregated_ckpt, h_res_ckpt, h_post_ckpt, _ = module.forward(
-=======
-        manager = CheckpointWithoutOutputManager()
-        aggregated_ckpt, h_res_ckpt, h_post_ckpt = module.forward(
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             hidden_states_ckpt, mhc_recompute_manager=manager
         )
 
@@ -531,18 +436,12 @@ class TestTransformerConfigRecomputeMhc:
             num_layers=2,
             hidden_size=64,
             num_attention_heads=4,
-<<<<<<< HEAD
             enable_hyper_connections=True,
             num_residual_streams=4,
-=======
-            enable_mhc_connections=True,
-            mhc_num_residual_streams=4,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             recompute_modules=["core_attn", "mhc"],
             recompute_granularity='selective',
         )
         assert "mhc" in config.recompute_modules
-<<<<<<< HEAD
         assert config.enable_hyper_connections is True
 
     def test_config_accepts_initial_attention_only_te_graph_split(self):
@@ -1007,64 +906,6 @@ class TestCheckpointRecomputeUnderFullGraphCapture:
             assert len(replay_param_grads) == len(ref_param_grads)
             for got, want in zip(replay_param_grads, ref_param_grads):
                 torch.testing.assert_close(got, want)
-=======
-        assert config.enable_mhc_connections is True
-
-    def test_config_rejects_pipeline_parallel(self):
-        """mHC expands to n-stream inside the block, so PP p2p shapes disagree."""
-        with pytest.raises(NotImplementedError, match="pipeline_model_parallel_size"):
-            TransformerConfig(
-                num_layers=2,
-                hidden_size=64,
-                num_attention_heads=4,
-                enable_mhc_connections=True,
-                pipeline_model_parallel_size=2,
-                # ModelParallelConfig.__post_init__ runs first and requires this
-                # whenever pipeline_model_parallel_size > 1.
-                pipeline_dtype=torch.bfloat16,
-            )
-
-    def test_config_rejects_fp32_residual_connection(self):
-        """The mHC residual is the n-stream tensor fed to the H_res bmm."""
-        with pytest.raises(NotImplementedError, match="fp32_residual_connection"):
-            TransformerConfig(
-                num_layers=2,
-                hidden_size=64,
-                num_attention_heads=4,
-                enable_mhc_connections=True,
-                fp32_residual_connection=True,
-            )
-
-    @pytest.mark.parametrize(
-        "extra_kwargs, error_type, match",
-        [
-            (
-                # recompute_num_layers is required for non-selective granularity, and that
-                # check runs first — supply it so the mHC guard is what actually fires.
-                {
-                    "recompute_granularity": "full",
-                    "recompute_method": "uniform",
-                    "recompute_num_layers": 1,
-                },
-                NotImplementedError,
-                "full activation recompute",
-            ),
-            ({"inference_fuse_tp_communication": True}, NotImplementedError, "single-stream"),
-            ({"mhc_sinkhorn_iterations": 0}, ValueError, "mhc_sinkhorn_iterations"),
-            ({"mhc_init_gating_factor": -0.1}, ValueError, "mhc_init_gating_factor"),
-        ],
-    )
-    def test_config_rejects_unsupported_combinations(self, extra_kwargs, error_type, match):
-        """Unsupported mHC combinations must fail at config time, not mid-forward."""
-        with pytest.raises(error_type, match=match):
-            TransformerConfig(
-                num_layers=2,
-                hidden_size=64,
-                num_attention_heads=4,
-                enable_mhc_connections=True,
-                **extra_kwargs,
-            )
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 
 if __name__ == "__main__":
