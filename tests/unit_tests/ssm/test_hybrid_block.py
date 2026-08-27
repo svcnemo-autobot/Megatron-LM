@@ -453,7 +453,6 @@ class TestHybridBlock:
         assert isinstance(layers[1].self_attention, SelfAttention)
         assert isinstance(layers[2], MambaLayer)
 
-<<<<<<< HEAD
     @pytest.mark.skipif(not HAVE_FLA_KDA, reason="FLA with KDA support is not installed.")
     def test_kda_layer_type(self):
         """K builds a TransformerLayer wrapping KimiDeltaAttention."""
@@ -468,13 +467,6 @@ class TestHybridBlock:
         )
         assert isinstance(block.layers[0], TransformerLayer)
         assert isinstance(block.layers[0].self_attention, KimiDeltaAttention)
-=======
-    def test_gdn_inference_spec(self):
-        """The inference stack must materialize GDN rather than its IdentityOp default."""
-        gdn_spec = hybrid_inference_stack_spec.submodules.gdn_layer
-        assert gdn_spec.module is TransformerLayer
-        assert gdn_spec.submodules.self_attention.module is GatedDeltaNet
->>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
 
     def test_gdn_gpu_forward(self):
         """Test GPU forward pass with GDN, attention, and Mamba layers."""
