@@ -9,7 +9,6 @@ import torch
 
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_local_submodules
 from megatron.core.transformer.moe.moe_layer import MoELayer, MoESubmodules
-<<<<<<< HEAD
 from megatron.core.transformer.moe.moe_logging import MoEMetricsTracker
 from megatron.core.transformer.moe.moe_utils import (
     get_default_pg_collection,
@@ -17,14 +16,6 @@ from megatron.core.transformer.moe.moe_utils import (
     router_gating_linear,
 )
 from megatron.core.transformer.moe.router import Router, TopKRouter
-=======
-from megatron.core.transformer.moe.moe_utils import (
-    get_updated_expert_bias,
-    router_gating_linear,
-    topk_routing_with_score_function,
-)
-from megatron.core.transformer.moe.router import Router
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 from megatron.core.transformer.spec_utils import get_submodules
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.training.initialize import _set_random_seed
@@ -238,7 +229,6 @@ class TestTop2Router:
 
     @pytest.mark.internal
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
-<<<<<<< HEAD
     @pytest.mark.parametrize(
         "dispatcher,backend,capacity_factor,rank_capacity_factor",
         [
@@ -273,61 +263,6 @@ class TestTop2Router:
 
         torch.testing.assert_close(probs_with_mask, probs_without_mask)
         assert torch.equal(routing_map_with_mask, routing_map_without_mask)
-=======
-    @pytest.mark.parametrize("with_padding_mask", [False, True])
-    def test_expert_bias_token_counts_with_padding_mask(self, with_padding_mask):
-        """Test expert-bias counts in grad-enabled masked and unmasked forwards."""
-        config = dataclasses.replace(
-            self.transformer_config,
-            moe_router_enable_expert_bias=True,
-            moe_router_load_balancing_type="none",
-            moe_router_score_function="sigmoid",
-        )
-        submodules = get_submodules(
-            get_gpt_layer_local_submodules(
-                num_experts=config.num_moe_experts, moe_grouped_gemm=False
-            ).mlp
-        )
-        assert isinstance(submodules, MoESubmodules)
-        router = cast(Router, MoELayer(config, submodules).router).cuda().train()
-
-        seq_len = 5
-        batch_size = 2
-        hidden_states = torch.randn(
-            (seq_len, batch_size, config.hidden_size),
-            dtype=torch.bfloat16,
-            device="cuda",
-            requires_grad=True,
-        )
-        assert seq_len * batch_size != config.num_moe_experts
-        padding_mask = None
-        if with_padding_mask:
-            padding_mask = torch.zeros((seq_len, batch_size), dtype=torch.bool, device="cuda")
-            padding_mask[-2:, 0] = True
-
-        probs, routing_map = router(hidden_states, padding_mask=padding_mask)
-        valid_routing_map = routing_map
-        if padding_mask is not None:
-            valid_routing_map = routing_map[~padding_mask.reshape(-1)]
-
-        expected_tokens_per_expert = valid_routing_map.sum(dim=0)
-        torch.testing.assert_close(
-            router.local_tokens_per_expert,
-            expected_tokens_per_expert.to(router.local_tokens_per_expert.dtype),
-        )
-        expected_valid_tokens = seq_len * batch_size
-        if padding_mask is not None:
-            expected_valid_tokens -= padding_mask.sum().item()
-        assert (
-            router.local_tokens_per_expert.sum() == expected_valid_tokens * config.moe_router_topk
-        )
-
-        probs.sum().backward()
-        assert hidden_states.grad is not None
-        assert hidden_states.grad.isfinite().all()
-        assert router.weight.grad is not None
-        assert router.weight.grad.isfinite().all()
->>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
 
     @pytest.mark.internal
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
@@ -730,7 +665,6 @@ def test_router_gating_linear_bias(router_dtype):
     assert torch.allclose(bias.grad, ref_bias.grad, **tols)
 
 
-<<<<<<< HEAD
 # ============================================================
 # Hash-based MoE routing tests
 # ============================================================
@@ -865,40 +799,3 @@ class TestHashRouting:
         output.sum().backward()
         assert hidden_states.grad is not None
         assert not torch.isnan(hidden_states.grad).any()
-=======
-@pytest.mark.internal
-@pytest.mark.parametrize("score_function", ["softmax", "sigmoid", "sqrtsoftplus"])
-@pytest.mark.parametrize("use_pre_softmax", [True, False])
-@pytest.mark.parametrize("topk", [1, 2])
-def test_topk_routing_precomputed_indices_equivalence(score_function, use_pre_softmax, topk):
-    """Passing precomputed_indices that match the function's own selection must reproduce
-    the standard output. Guards the shared post-top-k path reused by quantile balancing."""
-    if score_function != "softmax" and use_pre_softmax:
-        pytest.skip("pre_softmax only applies to softmax scoring")
-
-    torch.manual_seed(123)
-    num_tokens, num_experts = 64, 8
-    logits = torch.randn(num_tokens, num_experts)
-
-    kwargs = dict(use_pre_softmax=use_pre_softmax, score_function=score_function, fused=False)
-    probs_ref, map_ref = topk_routing_with_score_function(logits, topk, **kwargs)
-    _, top_indices = topk_routing_with_score_function(logits, topk, dense_output=True, **kwargs)
-    probs_pre, map_pre = topk_routing_with_score_function(
-        logits, topk, precomputed_indices=top_indices, **kwargs
-    )
-
-    # Natural top-k indices reproduce the standard output.
-    assert torch.equal(map_ref, map_pre)
-    torch.testing.assert_close(probs_ref, probs_pre)
-
-    # Indices that differ from the natural top-k must route to exactly those experts. This
-    # catches a regression where the precomputed_indices branch is dropped and the function
-    # silently recomputes its own top-k instead of honoring the caller's indices. Bottom-k is
-    # disjoint from top-k since 2 * topk <= num_experts.
-    alt_indices = logits.topk(topk, dim=1, largest=False).indices
-    _, map_alt = topk_routing_with_score_function(
-        logits, topk, precomputed_indices=alt_indices, **kwargs
-    )
-    expected_map = torch.zeros_like(logits, dtype=torch.bool).scatter(1, alt_indices, True)
-    assert torch.equal(map_alt, expected_map)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b

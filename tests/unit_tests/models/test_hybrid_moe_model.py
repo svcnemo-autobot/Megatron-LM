@@ -112,11 +112,7 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "embedding_init_method_std": 0.014,
     "enable_autocast": False,
     "enable_cuda_graph": False,
-<<<<<<< HEAD
     "enable_hyper_connections": False,
-=======
-    "enable_mhc_connections": False,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     "ep_overlap_early_attn_memory_release": False,
     "experimental_attention_variant": None,
     "experimental_attention_variant_loss_scale_func": None,
@@ -201,10 +197,7 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "masked_softmax_fusion": True,
     "memory_efficient_layer_norm": False,
     "mhc_init_gating_factor": 0.01,
-<<<<<<< HEAD
     "mhc_recompute_attn_cuda_graph_split": False,
-=======
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     "mhc_recompute_layer_num": None,
     "mhc_sinkhorn_iterations": 20,
     "microbatch_group_size_per_vp_stage": 1,
@@ -231,13 +224,9 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "moe_latent_size": None,
     "moe_layer_freq": 1,
     "moe_layer_recompute": False,
-<<<<<<< HEAD
     "moe_n_hash_layers": 0,
     "moe_ncclep_static_shape": False,
     "moe_ncclep_use_symm_mem": False,
-=======
-    "moe_ncclep_zero_copy": False,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     "moe_pad_expert_input_to_capacity": False,
     "moe_pad_experts_for_cuda_graph_inference": False,
     "moe_paged_stash": False,
@@ -303,11 +292,7 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "num_microbatches_with_partial_activation_checkpoints": None,
     "num_moe_experts": 128,
     "num_query_groups": 2,
-<<<<<<< HEAD
     "num_residual_streams": 4,
-=======
-    "mhc_num_residual_streams": 4,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     "output_layer_init_method": {},
     "overlap_moe_expert_parallel_comm": False,
     "overlap_p2p_comm": False,
@@ -402,12 +387,8 @@ GOLDEN_CONFIG: Dict[str, Any] = {
     "use_transformer_engine_op_fuser": False,
     "moe_single_grouped_weight": False,
     "moe_single_grouped_bias": False,
-<<<<<<< HEAD
     "head_wise_attn_gate": False,
     "moe_hybridep_pad_variable_tokens": False,
-=======
-    "moe_hybridep_pad_uneven_dispatch_inputs": False,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 }
 # Fields to ignore entirely (ephemeral, environment-specific, very large).
 SKIP_FIELDS = set()

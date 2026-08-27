@@ -460,7 +460,6 @@ class TestSharedExperts:
 
     @pytest.mark.internal
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
-<<<<<<< HEAD
     @pytest.mark.parametrize("bias_activation_fusion", [True, False])
     def test_shared_expert_clamped_swiglu(self, bias_activation_fusion):
         """
@@ -474,69 +473,6 @@ class TestSharedExperts:
 
         # Create MoE layer with shared expert overlap enabled.
         model_parallel_cuda_manual_seed(123)
-=======
-    def test_shared_expert_glu_linear_offset_overlap_parity(self):
-        """Nonzero GLU offsets produce identical overlap and synchronous results."""
-        Utils.initialize_model_parallel(tensor_model_parallel_size=1, expert_model_parallel_size=1)
-        shared_expert_kwargs = {
-            "moe_token_dispatcher_type": "alltoall",
-            "bias_activation_fusion": False,
-            "activation_func_clamp_value": None,
-            "glu_linear_offset": 0.5,
-        }
-
-        _set_random_seed(seed_=123, data_parallel_random_init=False)
-        moe_layer_overlap = self.get_moe_layer(
-            moe_shared_expert_overlap=True, **shared_expert_kwargs
-        ).to(dtype=torch.bfloat16)
-
-        _set_random_seed(seed_=123, data_parallel_random_init=False)
-        moe_layer_no_overlap = self.get_moe_layer(
-            moe_shared_expert_overlap=False, **shared_expert_kwargs
-        ).to(dtype=torch.bfloat16)
-        moe_layer_no_overlap.load_state_dict(moe_layer_overlap.state_dict())
-
-        hidden_states = torch.randn(
-            (32, 2, self.config.hidden_size),
-            requires_grad=True,
-            device="cuda",
-            dtype=torch.bfloat16,
-        )
-        hidden_states_no_overlap = hidden_states.detach().clone().requires_grad_(True)
-
-        shared_expert_overlap = moe_layer_overlap.shared_experts
-        shared_expert_no_overlap = moe_layer_no_overlap.shared_experts
-        assert shared_expert_overlap is not None
-        assert shared_expert_no_overlap is not None
-
-        # Isolate shared-expert parity from nondeterministic routed-token unpermutation.
-        shared_expert_overlap.pre_forward_comm(hidden_states)
-        shared_expert_overlap.linear_fc1_forward_and_act()
-        shared_expert_overlap.linear_fc2_forward()
-        shared_expert_overlap.post_forward_comm()
-        output_overlap = shared_expert_overlap.get_output()
-        output_no_overlap = shared_expert_no_overlap(hidden_states_no_overlap)
-        torch.testing.assert_close(output_overlap, output_no_overlap)
-
-        output_overlap.mean().backward()
-        output_no_overlap.mean().backward()
-
-        torch.testing.assert_close(hidden_states.grad, hidden_states_no_overlap.grad)
-        for p_overlap, p_no_overlap in zip(
-            shared_expert_overlap.parameters(), shared_expert_no_overlap.parameters()
-        ):
-            torch.testing.assert_close(p_overlap.grad, p_no_overlap.grad)
-
-    @pytest.mark.internal
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
-    @pytest.mark.parametrize("bias_activation_fusion", [True, False])
-    def test_shared_expert_clamped_swiglu(self, bias_activation_fusion):
-        """Verify clamped SwiGLU parity for overlapped and synchronous shared experts."""
-        Utils.initialize_model_parallel(tensor_model_parallel_size=1, expert_model_parallel_size=1)
-        clamp_value = 1.0
-
-        _set_random_seed(seed_=123, data_parallel_random_init=False)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         moe_layer_overlap = self.get_moe_layer(
             moe_shared_expert_overlap=True,
             moe_token_dispatcher_type="alltoall",
@@ -544,12 +480,8 @@ class TestSharedExperts:
             bias_activation_fusion=bias_activation_fusion,
         ).to(dtype=torch.bfloat16)
 
-<<<<<<< HEAD
         # Create MoE layer with shared expert overlap disabled, sharing weights.
         model_parallel_cuda_manual_seed(123)
-=======
-        _set_random_seed(seed_=123, data_parallel_random_init=False)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         moe_layer_no_overlap = self.get_moe_layer(
             moe_shared_expert_overlap=False,
             moe_token_dispatcher_type="alltoall",
@@ -558,27 +490,17 @@ class TestSharedExperts:
         ).to(dtype=torch.bfloat16)
         moe_layer_no_overlap.load_state_dict(moe_layer_overlap.state_dict())
 
-<<<<<<< HEAD
         # Use a large input range to ensure the clamp actually triggers.
         hidden_states = (
             torch.randn((32, 2, self.config.hidden_size), device="cuda", dtype=torch.bfloat16) * 5.0
         )
         hidden_states = hidden_states.detach().requires_grad_(True)
-=======
-        hidden_states = (
-            torch.randn((32, 2, self.config.hidden_size), device="cuda", dtype=torch.bfloat16) * 5.0
-        ).requires_grad_(True)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         hidden_states_no_overlap = hidden_states.detach().clone().requires_grad_(True)
 
         output_overlap, _ = moe_layer_overlap(hidden_states)
         output_no_overlap, _ = moe_layer_no_overlap(hidden_states_no_overlap)
 
-<<<<<<< HEAD
         cos_out = torch.nn.functional.cosine_similarity(
-=======
-        cos_out = F.cosine_similarity(
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             output_overlap.flatten().unsqueeze(0).float(),
             output_no_overlap.flatten().unsqueeze(0).float(),
         ).item()
@@ -598,11 +520,7 @@ class TestSharedExperts:
                 f"max diff: {torch.max(torch.abs(p_overlap.grad - p_no_overlap.grad))}"
             )
 
-<<<<<<< HEAD
         model_parallel_cuda_manual_seed(123)
-=======
-        _set_random_seed(seed_=123, data_parallel_random_init=False)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         moe_layer_unclamped = self.get_moe_layer(
             moe_shared_expert_overlap=False,
             moe_token_dispatcher_type="alltoall",
@@ -611,11 +529,7 @@ class TestSharedExperts:
         ).to(dtype=torch.bfloat16)
         moe_layer_unclamped.load_state_dict(moe_layer_overlap.state_dict())
 
-<<<<<<< HEAD
         hidden_states_unclamped = hidden_states.clone().detach().requires_grad_(True)
-=======
-        hidden_states_unclamped = hidden_states.detach().clone().requires_grad_(True)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         output_unclamped, _ = moe_layer_unclamped(hidden_states_unclamped)
         assert not torch.allclose(output_no_overlap, output_unclamped), (
             "Clamping had no observable effect on shared-expert output; "

@@ -16,10 +16,7 @@ from megatron.core.msc_utils import maybe_msc
 from megatron.core._rank_utils import safe_get_rank as _safe_get_rank
 from megatron.core._slurm_utils import resolve_slurm_local_rank
 from megatron.core.dist_checkpointing.strategies.nvrx import has_nvrx_async_support
-<<<<<<< HEAD
 from megatron.core.msc_utils import MultiStorageClientFeature, open_file
-=======
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 try:
     from transformer_engine.pytorch.optimizers import multi_tensor_applier, multi_tensor_l2norm
@@ -181,12 +178,8 @@ def calc_params_l2_norm(model, force_create_fp32_copy=False):
     # over-count by gtp_remat. No-op for non-GTP_remat runs.
     _sum_reduce(
         sharded_norm_2,
-<<<<<<< HEAD
         op=torch.distributed.ReduceOp.SUM,
         group=mpu.get_data_parallel_group(with_context_parallel=True),
-=======
-        mpu.get_data_parallel_group(with_context_parallel=True, with_gtp_remat=False),
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     )
     _sum_reduce(
         gtp_sharded_norm_2,
@@ -379,7 +372,6 @@ def check_adlr_autoresume_termination(iteration, model, optimizer, opt_param_sch
         sys.exit(0)
 
 
-<<<<<<< HEAD
 def get_ltor_masks_and_position_ids(
     data,
     eod_token,
@@ -390,37 +382,6 @@ def get_ltor_masks_and_position_ids(
     pad_mask_loss,
 ):
     """Build masks and position id for left to right model."""
-=======
-def get_ltor_masks_and_position_ids(data,
-                                    eod_token,
-                                    pad_token,
-                                    reset_position_ids,
-                                    reset_attention_mask,
-                                    eod_mask_loss,
-                                    pad_mask_loss,
-                                    create_attention_mask=True):
-    """Build masks and position id for left to right model.
-
-    Args:
-        data: Token ids, shape [micro_batch_size, seq_length].
-        eod_token: End-of-document token id.
-        pad_token: Padding token id.
-        reset_position_ids: Restart position ids from 0 after each EOD token.
-        reset_attention_mask: Additionally mask attention across document boundaries,
-            turning the shared causal mask into a per-sample block-causal mask.
-            Requires create_attention_mask, since it modifies the materialized mask.
-        eod_mask_loss: Zero the loss mask at EOD tokens.
-        pad_mask_loss: Zero the loss mask at pad tokens.
-        create_attention_mask: Materialize the dense causal attention mask.
-            Can be disabled if the attention kernel generates the mask by itself
-            (e.g. from PackedSeqParams), in which case attention_mask is returned as None.
-
-    Returns:
-        Tuple of (attention_mask or None, loss_mask, position_ids).
-    """
-    assert create_attention_mask or not reset_attention_mask, \
-        "reset_attention_mask requires the attention mask to be created."
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     # Extract batch size and sequence length.
     micro_batch_size, seq_length = data.size()

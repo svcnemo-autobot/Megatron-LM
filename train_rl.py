@@ -416,18 +416,7 @@ if __name__ == "__main__":
                 pg_collection=pg_collection,
             )
 
-<<<<<<< HEAD
     args = parse_and_validate_args(extra_args_provider=add_inference_args, args_defaults={})
-=======
-    args = parse_and_validate_args(
-        extra_args_provider=add_inference_args,
-        args_defaults={},
-    )
-    assert not args.reset_attention_mask, (
-        "--reset-attention-mask is not supported in RL training: "
-        "the forward pass masks via PackedSeqParams and never consumes a dense attention mask."
-    )
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     if is_hybrid_model(args):
         model_cfg = hybrid_config_from_args(args)
     else:

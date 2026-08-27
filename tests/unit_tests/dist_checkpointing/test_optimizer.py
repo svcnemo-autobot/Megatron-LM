@@ -25,12 +25,7 @@ from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_layer_with_transformer_engine_spec as gpt_te_spec,
 )
 from megatron.core.models.gpt.gpt_model import GPTModel
-<<<<<<< HEAD
 from megatron.core.optimizer import ChainedOptimizer, OptimizerConfig, get_megatron_optimizer
-=======
-from megatron.core.optimizer import HAVE_EMERGING_OPTIMIZERS, ChainedOptimizer
-from megatron.core.optimizer.distrib_optimizer import DistributedOptimizer
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 from megatron.core.tensor_parallel import model_parallel_cuda_manual_seed
 from megatron.core.transformer import MLATransformerConfig, TransformerConfig
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
@@ -84,7 +79,6 @@ class Model(torch.nn.Module):
         return sharded_state_dict
 
 
-<<<<<<< HEAD
 class Fp32MarkedModel(torch.nn.Module):
     """BF16 model with one parameter kept in FP32 (like the mHC / CSA params)."""
 
@@ -96,18 +90,6 @@ class Fp32MarkedModel(torch.nn.Module):
         self.gate = torch.nn.Parameter(torch.zeros(24))
         self.post = torch.nn.Linear(8, 8, bias=False)
         mark_keep_in_fp32(self.gate)
-=======
-class NativeFp32Model(torch.nn.Module):
-    """Parameters for an interleaved trainable/frozen BF16 and FP32 group."""
-
-    def __init__(self):
-        super().__init__()
-        self.pre = torch.nn.Linear(8, 8, bias=False)
-        self.frozen = torch.nn.Linear(8, 8, bias=False)
-        self.frozen.weight.requires_grad_(False)
-        self.gate = torch.nn.Parameter(torch.zeros(24, dtype=torch.float32))
-        self.post = torch.nn.Linear(8, 8, bias=False)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         self.config = TransformerConfig(
             hidden_size=8, num_attention_heads=1, num_layers=1, bf16=True
         )
@@ -119,7 +101,6 @@ class NativeFp32Model(torch.nn.Module):
         }
 
 
-<<<<<<< HEAD
 class MixedDtypeNet(torch.nn.Module):
     """Module whose single optimizer param group mixes bf16 and fp32 params.
 
@@ -164,8 +145,6 @@ class MixedDtypeNet(torch.nn.Module):
         return y.float() * self.alpha.mean()
 
 
-=======
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 class SwigluFactoryModel(torch.nn.Module):
     def __init__(self, pp_separate_model: bool = False):
         super().__init__()
@@ -360,7 +339,6 @@ class TestOptimizer:
             ]
         )
 
-<<<<<<< HEAD
     def test_float16_optimizer_with_fp32_marked_params(self):
         """Params kept in FP32 (mark_keep_in_fp32) land in fp32_from_fp32_groups, so
         the optimizer state ids must not be assumed to enumerate float16 params only."""
@@ -378,34 +356,6 @@ class TestOptimizer:
         for p in model.parameters():
             p.grad = torch.zeros_like(p)
         inner_optim = Adam(model.parameters())
-=======
-    def test_float16_optimizer_with_native_fp32_and_frozen_params(self):
-        """Native FP32 and frozen param ids must not shift BF16 checkpoint state."""
-        from megatron.core.optimizer import OptimizerConfig
-        from megatron.core.optimizer.optimizer import Float16OptimizerWithFloat16Params
-        from megatron.core.transformer.module import (
-            convert_module_to_dtype_except_fp32_marked,
-            mark_keep_in_fp32,
-        )
-
-        Utils.initialize_model_parallel(1, 1)
-        model = NativeFp32Model().cuda()
-        model.gate = mark_keep_in_fp32(model.gate)
-        convert_module_to_dtype_except_fp32_marked(model, torch.bfloat16)
-        assert model.pre.weight.dtype == torch.bfloat16
-        assert model.frozen.weight.dtype == torch.bfloat16
-        assert not model.frozen.weight.requires_grad
-        assert model.gate.dtype == torch.float32
-        assert model.post.weight.dtype == torch.bfloat16
-
-        # Use an explicit trainable BF16/frozen BF16/FP32/trainable BF16 order.
-        # Module.parameters() would yield the root gate before child parameters.
-        ordered_params = [model.pre.weight, model.frozen.weight, model.gate, model.post.weight]
-        for param in ordered_params:
-            if param.requires_grad:
-                param.grad = torch.zeros_like(param)
-        inner_optim = Adam(ordered_params)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         inner_optim.step()
 
         optim = Float16OptimizerWithFloat16Params(
@@ -416,20 +366,13 @@ class TestOptimizer:
         )
         sharded_state_dict = optim.sharded_state_dict(model.sharded_state_dict())
 
-<<<<<<< HEAD
         # FP32 main copies pair with the bf16 params only, in order.
         fp32_params = sharded_state_dict['fp32_from_fp16_params'][0]
         assert [(sh_ten.key, tuple(sh_ten.data.shape)) for sh_ten in fp32_params] == [
-=======
-        # FP32 main copies pair with the BF16 params only, in optimizer order.
-        fp32_params = sharded_state_dict['fp32_from_fp16_params'][0]
-        assert [(sharded.key, tuple(sharded.data.shape)) for sharded in fp32_params] == [
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             ('optimizer.state.fp32_param.pre.weight', (8, 8)),
             ('optimizer.state.fp32_param.post.weight', (8, 8)),
         ]
 
-<<<<<<< HEAD
         # Per-param state maps every param, including the FP32-kept one,
         # to the right model key and shape.
         state = sharded_state_dict['optimizer']['state']
@@ -588,23 +531,6 @@ class TestMixedDtypeParamGroups:
                         f"optimizer state '{key}' of the {tuple(model_param.shape)} "
                         f"{model_param.dtype} model param was not restored from the checkpoint"
                     )
-=======
-        # The frozen parameter has neither optimizer state nor an fp32 main copy.
-        state = sharded_state_dict['optimizer']['state']
-        assert 1 not in state
-
-        # Per-param state maps every trainable param, including native FP32, to the right key.
-        expected = {0: ('pre.weight', (8, 8)), 2: ('gate', (24,)), 3: ('post.weight', (8, 8))}
-        for param_id, (model_key, shape) in expected.items():
-            for state_key in ('exp_avg', 'exp_avg_sq'):
-                sharded = state[param_id][state_key]
-                assert sharded.key == f'optimizer.state.{state_key}.{model_key}', sharded.key
-                assert tuple(sharded.data.shape) == shape, (
-                    param_id,
-                    sharded.key,
-                    sharded.data.shape,
-                )
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 
 def initialize_pp_agnostic_model(pre_process=True, post_process=True, seed=0, **config_kwargs):

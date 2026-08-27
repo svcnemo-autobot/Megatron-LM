@@ -156,7 +156,6 @@ class MockCoreAttention(torch.nn.Module):
 
 
 def get_mock_mla_config(
-<<<<<<< HEAD
     tensor_model_parallel_size: int,
     context_parallel_size: int,
     sequence_parallel: bool,
@@ -165,9 +164,6 @@ def get_mock_mla_config(
     fp8_recipe: str = "delayed",
     fp4: Optional[str] = None,
     fp4_recipe: str = "nvfp4",
-=======
-    tensor_model_parallel_size: int, context_parallel_size: int, qk_layernorm: bool
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 ) -> MLATransformerConfig:
     """Create test config with all attributes used in MLA."""
     return MLATransformerConfig(
@@ -312,17 +308,11 @@ def test_functionality(
     model_parallel_cuda_manual_seed(123)
 
     # Create model
-<<<<<<< HEAD
     config = get_mock_mla_config(
         tensor_model_parallel_size=tp_size,
         context_parallel_size=cp_size,
         sequence_parallel=sp,
         recompute_mla_up_proj=recompute_mla_up_proj,
-=======
-    qk_layernorm = True
-    config = get_mock_mla_config(
-        tensor_model_parallel_size=tp_size, context_parallel_size=cp_size, qk_layernorm=qk_layernorm
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     )
     absorbed_submodules = get_absorbed_mla_submodules(
         down_proj_use_column_parallel=down_proj_use_column_parallel,

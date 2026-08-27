@@ -333,7 +333,6 @@ def test_make_fused_impl_pre_forward_hook_rejects_input_modifying_hook():
         hook(object())
 
 
-<<<<<<< HEAD
 def test_make_fused_impl_post_forward_hook_dispatches_submodule_hooks():
     module = TEGroupedMLP.__new__(TEGroupedMLP)
     torch.nn.Module.__init__(module)
@@ -360,43 +359,6 @@ def test_make_fused_impl_post_forward_hook_dispatches_submodule_hooks():
 
     assert {label for label, _ in calls} == {"fc1", "fc2"}
     torch.testing.assert_close(output, torch.full_like(output, 2))
-=======
-def test_make_fused_impl_pre_forward_hook_exposes_fsdp_main_grad_for_fused_wgrad():
-    class FakeGroupedLinear(torch.nn.Module):
-        def __init__(self, *, fuse_wgrad_accumulation):
-            super().__init__()
-            self.fuse_wgrad_accumulation = fuse_wgrad_accumulation
-            self.weight = torch.nn.Parameter(torch.ones(2, 2))
-            self.bias = torch.nn.Parameter(torch.zeros(2))
-
-    module = TEGroupedMLP.__new__(TEGroupedMLP)
-    torch.nn.Module.__init__(module)
-    module.linear_fc1 = FakeGroupedLinear(fuse_wgrad_accumulation=True)
-    module.linear_fc2 = FakeGroupedLinear(fuse_wgrad_accumulation=False)
-
-    fc1_main_grad = torch.empty_like(module.linear_fc1.weight)
-    module.linear_fc1.weight.get_main_grad = lambda: fc1_main_grad
-    module.linear_fc1.weight.overwrite_main_grad = False
-
-    existing_main_grad = torch.empty_like(module.linear_fc1.bias)
-    module.linear_fc1.bias.main_grad = existing_main_grad
-    module.linear_fc1.bias.get_main_grad = pytest.fail
-    module.linear_fc1.bias.overwrite_main_grad = False
-
-    fc2_main_grad = torch.empty_like(module.linear_fc2.weight)
-    module.linear_fc2.weight.get_main_grad = lambda: fc2_main_grad
-    module.linear_fc2.weight.overwrite_main_grad = False
-
-    hook = module._make_fused_impl_pre_forward_hook()
-    hook(object())
-
-    assert module.linear_fc1.weight.main_grad is fc1_main_grad
-    assert module.linear_fc1.weight.overwrite_main_grad is True
-    assert module.linear_fc1.bias.main_grad is existing_main_grad
-    assert module.linear_fc1.bias.overwrite_main_grad is True
-    assert getattr(module.linear_fc2.weight, "main_grad", None) is None
-    assert module.linear_fc2.weight.overwrite_main_grad is False
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 
 def test_make_fused_ops_handles_single_grouped_weight_for_fc1(monkeypatch):
@@ -559,25 +521,15 @@ def _make_fake_te_namespace():
             glu_interleave_size,
             *,
             activation_recompute_in_mlp=False,
-<<<<<<< HEAD
             alpha=None,
             limit=None,
             glu_linear_offset=None,
-=======
-            limit=None,
-            alpha=1.702,
-            glu_linear_offset=1.0,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         ):
             super().__init__()
             self.glu_interleave_size = glu_interleave_size
             self.activation_recompute_in_mlp = activation_recompute_in_mlp
             self.alpha = alpha
             self.limit = limit
-<<<<<<< HEAD
-=======
-            self.alpha = alpha
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
             self.glu_linear_offset = glu_linear_offset
 
     class FakeScaledSReLU(torch.nn.Module):
@@ -749,10 +701,7 @@ def _make_fused_impl_support_module(
     activation_func,
     gated_linear_unit,
     use_fused_weighted_squared_relu=False,
-<<<<<<< HEAD
     moe_mlp_glu_interleave_size=32,
-=======
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     activation_func_clamp_value=None,
 ):
     module = TEGroupedMLP.__new__(TEGroupedMLP)
@@ -795,14 +744,7 @@ def test_is_fused_impl_supported_uses_config_activation_for_swiglu(monkeypatch):
     assert module._is_fused_impl_supported() is True
 
 
-<<<<<<< HEAD
 def test_is_fused_impl_supported_requires_cutedsl_env(monkeypatch):
-=======
-@pytest.mark.parametrize("activation_func_clamp_value", [None, 10.0], ids=("unclamped", "clamped"))
-def test_is_fused_impl_supported_requires_cutedsl_for_swiglu(
-    monkeypatch, activation_func_clamp_value
-):
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     fake_te, FakeGroupedLinear = _make_fake_te_namespace()
     monkeypatch.setattr(experts_module, "te", fake_te)
     monkeypatch.setattr(experts_module, "HAVE_TE", True)
@@ -811,71 +753,12 @@ def test_is_fused_impl_supported_requires_cutedsl_for_swiglu(
     _install_fake_te_ops_modules(monkeypatch, fake_te)
 
     module = _make_fused_impl_support_module(
-<<<<<<< HEAD
         FakeGroupedLinear, activation_func=F.silu, gated_linear_unit=True
-=======
-        FakeGroupedLinear,
-        activation_func=F.silu,
-        gated_linear_unit=True,
-        activation_func_clamp_value=activation_func_clamp_value,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     )
 
     assert module._is_fused_impl_supported() is False
 
 
-<<<<<<< HEAD
-=======
-def test_is_fused_impl_supported_requires_scaled_fc2_bias(monkeypatch):
-    fake_te, FakeGroupedLinear = _make_fake_te_namespace()
-
-    class FakeGroupedLinearWithoutScaleBias(FakeGroupedLinear):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-
-    fake_te.pytorch.GroupedLinear = FakeGroupedLinearWithoutScaleBias
-    fake_te.pytorch.ops.GroupedLinear = FakeGroupedLinearWithoutScaleBias
-    monkeypatch.setattr(experts_module, "te", fake_te)
-    monkeypatch.setattr(experts_module, "HAVE_TE", True)
-    monkeypatch.setattr(experts_module, "is_te_min_version", lambda _: True)
-    _install_fake_te_ops_modules(monkeypatch, fake_te)
-
-    module = _make_fused_impl_support_module(
-        FakeGroupedLinearWithoutScaleBias, activation_func=F.silu, gated_linear_unit=True
-    )
-    module.linear_fc2.use_bias = True
-
-    assert module._is_fused_impl_supported() is False
-
-
-@pytest.mark.parametrize(
-    ("te_217_or_later", "include_clamped_qgeglu", "expected"),
-    [(True, True, True), (False, True, False), (True, False, False)],
-)
-def test_is_fused_impl_supported_gates_clamped_swiglu(
-    monkeypatch, te_217_or_later, include_clamped_qgeglu, expected
-):
-    fake_te, FakeGroupedLinear = _make_fake_te_namespace()
-    monkeypatch.setattr(experts_module, "te", fake_te)
-    monkeypatch.setattr(experts_module, "HAVE_TE", True)
-    monkeypatch.setattr(
-        experts_module, "is_te_min_version", lambda version: version == "2.14.0" or te_217_or_later
-    )
-    _install_fake_te_ops_modules(
-        monkeypatch, fake_te, include_clamped_qgeglu=include_clamped_qgeglu
-    )
-
-    module = _make_fused_impl_support_module(
-        FakeGroupedLinear,
-        activation_func=F.silu,
-        gated_linear_unit=True,
-        activation_func_clamp_value=10.0,
-    )
-
-    assert module._is_fused_impl_supported() is expected
-
-
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 @pytest.mark.parametrize(
     (
         "use_fused_weighted_squared_relu",

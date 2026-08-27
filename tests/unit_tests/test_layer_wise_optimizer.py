@@ -60,7 +60,6 @@ class TinyModel(nn.Module):
         return self.fc1(x)
 
 
-<<<<<<< HEAD
 def test_layerwise_step_hook_is_noop_without_chunked_offload():
     """Disabled offload must not inspect child-only manager attributes or rebuild pipeline state."""
 
@@ -212,19 +211,6 @@ def test_layerwise_prefetches_single_managed_child_state():
     events.clear()
     assert optimizer._step()
     assert events == ["state:b", "step:a", "step:b", "step:c"]
-=======
-class MuonExcludedMatrixModel(nn.Module):
-    """Model with a 2D matrix explicitly routed to the scalar optimizer."""
-
-    def __init__(self):
-        super().__init__()
-        self.scalar = nn.Linear(10, 8)
-        self.muon = nn.Linear(8, 5)
-        self.scalar.weight.use_muon = False
-
-    def forward(self, x):
-        return self.muon(F.relu(self.scalar(x)))
->>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
 
 
 @pytest.mark.skipif(
@@ -491,7 +477,6 @@ class TestLayerWiseOptimizer:
                             f"Parameter {name} differs between rank 0 and rank {i}. {str(e)}"
                         ) from None
 
-<<<<<<< HEAD
     def test_compact_muon_chunked_state_and_master_offload(self):
         """Compact-layout Muon updates whole tensors while state and masters live on CPU."""
 
@@ -598,28 +583,6 @@ class TestLayerWiseOptimizer:
         if len(managers) >= 2:
             assert len({id(manager.transfer_streams[0]) for manager in managers}) == 1
             assert len({id(manager.transfer_streams[1]) for manager in managers}) == 1
-=======
-    def test_explicit_muon_exclusion_updates_with_param_layout(self):
-        """An excluded 2D matrix is updated and synchronized by the scalar DistOpt."""
-        model, optimizer, pg_collection = self.create_model_and_optimizer(
-            model_class=MuonExcludedMatrixModel, use_param_layout=True
-        )
-        excluded_weight = model.module.scalar.weight
-        initial_weight = excluded_weight.detach().clone()
-
-        output = model(torch.randn(16, 10, dtype=torch.bfloat16, device='cuda'))
-        output.sum().backward()
-        update_successful, _, _ = optimizer.step()
-
-        assert update_successful
-        assert not torch.equal(excluded_weight, initial_weight)
-
-        dp_size = get_pg_size(pg_collection.dp_cp)
-        gathered = [torch.empty_like(excluded_weight) for _ in range(dp_size)]
-        torch.distributed.all_gather(gathered, excluded_weight, group=pg_collection.dp_cp)
-        for replica in gathered[1:]:
-            torch.testing.assert_close(gathered[0], replica, rtol=0, atol=0)
->>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
 
     def test_get_grad_norm(self):
         """Test LayerWiseDistributedOptimizer gradient norm computation."""

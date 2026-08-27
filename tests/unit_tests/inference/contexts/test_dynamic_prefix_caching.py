@@ -936,66 +936,6 @@ class TestMambaPrefixCaching(PrefixCachingTestBase):
         )
 
     @pytest.mark.internal
-<<<<<<< HEAD
-=======
-    def test_hybrid_prefix_caching_without_mamba_budget_warns(self, caplog):
-        # Memory-only mode: prefix caching on a hybrid model without a Mamba cache
-        # budget is allowed (KV prefixes deduplicated for memory savings) but must
-        # warn that Mamba state caching and prefill skipping are disabled, and must
-        # not allocate a slot allocator.
-        import logging as _logging
-
-        with caplog.at_level(_logging.WARNING):
-            ctx = self._ctx(
-                mamba_config=self._mamba_config(),
-                enable_prefix_caching=True,
-                prefix_caching_mamba_gb=None,
-            )
-        assert ctx.is_hybrid_model
-        assert ctx.mamba_slot_allocator is None
-        assert "memory-only" in caplog.text
-
-    @pytest.mark.internal
-    def test_mamba_cache_budget_too_small_raises(self):
-        # The CUDA-graph extraction scratch (sized to the per-step token-budget
-        # cap, max_mamba_intermediate_states_per_step) is reserved from
-        # prefix_caching_mamba_gb before the durable cache is sized. A budget too
-        # small to fit the scratch plus at least one durable slot is a hard
-        # configuration error, not a silent over-allocation (which previously
-        # could OOM at startup).
-        with pytest.raises(ValueError, match="prefix cache budget"):
-            self._mctx(prefix_caching_mamba_gb=1e-5)
-
-    @pytest.mark.internal
-<<<<<<< HEAD
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
-=======
-    def test_hybrid_admission_resumes_after_handoff_releases_live_slot(self):
-        ctx = self._mctx(max_requests=1, rounder=1)
-        ctx.kv_block_allocator.enable_handoff_pinning = True
-        slot = ctx.mamba_metadata.allocate_slot()
-        assert slot is not None
-        ctx.mamba_metadata.request_to_mamba_state_idx[0] = slot
-        ctx.mamba_metadata.detach_state_slot(0)
-        request = self._req(ctx, self._prompt(ctx.block_size_tokens))
-
-        request_available, _, _ = ctx.check_availability(request)
-
-        assert not request_available
-
-        engine = InferenceStateHandoffMixin()
-        engine.context = ctx
-        engine._initialize_disaggregation_state()
-        engine._pinned_handoff_ssm_slots[7] = slot
-        engine.release_handoff_blocks(7)
-
-        request_available, _, _ = ctx.check_availability(request)
-
-        assert request_available
-        assert ctx.mamba_metadata.mamba_state_free_slot_count == 1
-
-    @pytest.mark.internal
->>>>>>> 787649a6065be9a70e2b1c931283569b7ac9bc32
     def test_mamba_prefill_skip_and_zero_prefill(self):
         # mamba match limits prefill skip
         ctx = self._mctx()
