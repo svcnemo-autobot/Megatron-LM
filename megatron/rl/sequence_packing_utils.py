@@ -4,7 +4,6 @@ import logging
 import math
 import typing
 from dataclasses import dataclass, field
-<<<<<<< HEAD
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -19,10 +18,6 @@ from megatron.core.num_microbatches_calculator import (
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import log_single_rank
 from megatron.training.global_vars import get_args, get_tokenizer
-=======
-from megatron.core.utils import log_single_rank, round_up_to_nearest_multiple
-from megatron.training.global_vars import get_tokenizer
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 from megatron.training.utils import get_nvtx_range
 
 logger = logging.getLogger(__name__)
@@ -433,10 +428,6 @@ def create_packed_seq_params_for_bin(
     bin_size: int,
     max_sequences_per_bin: int,
     device: torch.device,
-<<<<<<< HEAD
-=======
-    seq_length_multiple: int = 1,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 ) -> Optional[PackedSeqParams]:
     """Create PackedSeqParams for a single bin to enable proper attention masking in TE.
 
@@ -508,7 +499,6 @@ def create_packed_seq_params_for_bin(
     )
 
     cu_seqlens = torch.tensor(cu_seqlens_list, dtype=torch.int32, device=device)
-<<<<<<< HEAD
 
     # Pad cu_seqlens to bin_size by repeating the last value (creates zero-length ghost sequences)
     # This ensures a fixed tensor size for CUDA graph compatibility
@@ -517,16 +507,6 @@ def create_packed_seq_params_for_bin(
         out = cu_seqlens.new_full((max_sequences_per_bin + 2,), bin_size)
         out[: len(cu_seqlens)] = cu_seqlens
         cu_seqlens = out
-=======
-    if seq_length_multiple > 1:
-        cu_seqlens_padded = torch.tensor(cu_seqlens_padded_list, dtype=torch.int32, device=device)
-    else:
-        assert np.array_equal(cu_seqlens_padded_list, cu_seqlens_list), (
-            f"bin {bin_idx}: padded layout {cu_seqlens_padded_list.tolist()} deviates from "
-            f"actual boundaries {cu_seqlens_list.tolist()} with seq_length_multiple == 1"
-        )
-        cu_seqlens_padded = None
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     max_seqlen = bin_size
 
@@ -1033,14 +1013,7 @@ def pack_all_trajectories(
         # evenly across CP ranks (see _scatter_for_context_parallel in rl_utils).
         cp_size = mpu.get_context_parallel_world_size()
         packer = SequencePacker(
-<<<<<<< HEAD
             bin_size=bin_size, pad_token=tokenizer.pad, max_sequences_per_bin=max_sequences_per_bin
-=======
-            bin_size=bin_size,
-            pad_token=tokenizer.pad,
-            max_sequences_per_bin=max_sequences_per_bin,
-            seq_length_multiple=2 * cp_size if cp_size > 1 else 1,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         )
 
         # Pack sequences with generation masks
@@ -1071,7 +1044,6 @@ def pack_all_trajectories(
     # Create a temporary packing context to pass to create_packed_seq_params
     cached_packed_seq_params = [
         create_packed_seq_params_for_bin(
-<<<<<<< HEAD
             packing_info=packing_info,
             bin_idx=bin_idx,
             bin_size=bin_size,
@@ -1079,15 +1051,6 @@ def pack_all_trajectories(
             device=packed_trajs.device,
         )
         for bin_idx in range(len(packed_trajs))
-=======
-                packing_info=packing_info,
-                bin_idx=bin_idx,
-                bin_size=bin_size,
-                max_sequences_per_bin=max_sequences_per_bin,
-                device=packed_trajs.device,
-                seq_length_multiple=packer.seq_length_multiple,
-            ) for bin_idx in range(len(packed_trajs))
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     ]
 
     # Create the final PackingContext

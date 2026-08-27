@@ -3,12 +3,7 @@
 import pytest
 import torch
 
-<<<<<<< HEAD
 from megatron.core.models.hybrid.hybrid_block import HybridStack, HyperConnectionHybridLayer
-=======
-from megatron.core.extensions.transformer_engine import TEDotProductAttention
-from megatron.core.models.hybrid.hybrid_block import HybridStack
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 from megatron.core.models.hybrid.hybrid_layer_allocation import Symbols, validate_segment_layers
 from megatron.core.models.hybrid.hybrid_layer_specs import (
     hybrid_inference_stack_spec,
@@ -86,11 +81,7 @@ class TestHybridBlock:
             pg_collection=self.get_pg_collection(),
         )
 
-<<<<<<< HEAD
     def get_dsa_mamba_block(self, layer_pattern, enable_hyper_connections=False):
-=======
-    def get_dsa_hybrid_block(self, layer_pattern):
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         layer_type_list = validate_segment_layers(layer_pattern)
         mhc_kwargs = (
             {"enable_hyper_connections": True, "hidden_dropout": 0.0, "mhc_sinkhorn_iterations": 5}

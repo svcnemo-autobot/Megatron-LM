@@ -517,13 +517,10 @@ def modelopt_gpt_hybrid_builder(
         # Additional tweaks needed for MCore.
         # (accounts for sharded state, pipeline parallel, and potentially skipping LM loss)
         mtd_mcore.adjust_distillation_model_for_mcore(model, distill_cfg)
-<<<<<<< HEAD
         # Also remove KD mode state to prevent issues with re-conversion after restore.
         mto.ModeloptStateManager(
             model
         ).state_dict().pop()  # TODO(aanoosheh): remove once fixed in ModelOpt
-=======
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     return model
 

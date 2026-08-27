@@ -38,18 +38,7 @@ from megatron.core.transformer.cuda_graphs import (
     CudaGraphManager,
     TECudaGraphHelper,
     _CudagraphGlobalRecord,
-<<<<<<< HEAD
     _layer_is_graphable,
-=======
-    create_cudagraphs,
-    delete_cuda_graphs,
-)
-from megatron.core.transformer.enums import (
-    AttnBackend,
-    CudaGraphModule,
-    CudaGraphScope,
-    InferenceCudaGraphScope,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 )
 from megatron.core.transformer.mlp import MLPSubmodules
 from megatron.core.transformer.module import GraphableMegatronModule, MegatronModule

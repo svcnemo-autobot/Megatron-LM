@@ -23,11 +23,6 @@ from megatron.core.optimizer import (
     get_megatron_optimizer,
     get_standard_config_overrides,
 )
-<<<<<<< HEAD
-=======
-from megatron.core.optimizer.distrib_optimizer import DistributedOptimizer
-from megatron.core.optimizer.optimizer import copy_optimizer_param_metadata
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 from megatron.core.optimizer_param_scheduler import ParamGroupOverride
 from megatron.core.process_groups_config import ProcessGroupCollection
 from megatron.core.transformer import TransformerConfig

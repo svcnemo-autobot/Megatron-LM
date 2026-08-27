@@ -2,22 +2,14 @@
 import pytest
 import torch
 
-<<<<<<< HEAD
 from megatron.core.tensor_parallel.layers import (
     linear_with_frozen_weight,
     param_is_not_tensor_parallel_duplicate,
-=======
-from megatron.core.extensions.transformer_engine import te_general_gemm
-from megatron.core.tensor_parallel.layers import (
-    linear_with_frozen_weight,
-    linear_with_grad_accumulation_and_async_allreduce,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 )
 from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
 from tests.unit_tests.test_utilities import Utils
 
 
-<<<<<<< HEAD
 class _RankGroup:
     """Process-group stub that reports a fixed local rank."""
 
@@ -44,24 +36,6 @@ def test_param_is_not_tensor_parallel_duplicate_uses_parameter_parallel_group(
     )
 
     assert actual is expected
-=======
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
-def test_linear_default_output_dtype_preserves_input_dtype(dtype):
-    Utils.initialize_model_parallel(1, 1)
-
-    try:
-        input_data = torch.randn(4, 3, 16, device="cuda", dtype=dtype)
-        weight = torch.randn(32, 16, device="cuda", dtype=dtype)
-        output = linear_with_grad_accumulation_and_async_allreduce(
-            input_data, weight, None, False, False, False, tp_group=None, output_dtype=None
-        )
-        reference = torch.nn.functional.linear(input_data, weight)
-
-        assert output.dtype == input_data.dtype
-        torch.testing.assert_close(output, reference)
-    finally:
-        Utils.destroy_model_parallel()
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 
 @pytest.mark.parametrize("tensor_parallel,allreduce_dgrad", [(1, False), (8, True)])
