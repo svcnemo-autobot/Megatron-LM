@@ -1,10 +1,23 @@
 # Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
+import asyncio
+import time
 from abc import ABC, abstractmethod
-from typing import Awaitable, Callable, Generic, NamedTuple, TypeVar
+from typing import AsyncIterator, Awaitable, Callable, Generic, NamedTuple, TypeVar
+
+import numpy as np
+
+from megatron.core.inference.utils import asyncio_Queue, asyncio_QueueShutDown
+from megatron.core.utils import trace_async_exceptions
 
 from ..__init__ import Request, TypeLookupable
-from ..inference import InferenceInterface, InferenceRequest, InferenceResponse, LLMChatMessage
+from ..inference import (
+    InferenceInterface,
+    InferenceRequest,
+    InferenceResponse,
+    LLMChatMessage,
+    ReturnsRaw,
+)
 from ..rollout_granularity import ConsumptionGranularity, SubmissionGranularity
 from ..types import AgentBaseModel, GroupedRollouts, Rollout, RolloutGroup, Rollouts, TokenRollout
 
@@ -135,7 +148,6 @@ class TokenizedRolloutGenerator(Agent, ABC):
 class EnvAllocation(NamedTuple):
     """One env's constant share of every trainer batch."""
 
-<<<<<<< HEAD
     @classmethod
     def from_request(cls, request: GroupedRolloutRequest) -> "_GranularityConfig":
         cls._validate(request)
@@ -162,12 +174,18 @@ class EnvAllocation(NamedTuple):
 
 
 class _SubmissionGate:
-    """Gate capacity is measured in units of the configured submission granularity."""
+    """Gate capacity is measured in units of the configured submission granularity.
+
+    Each granularity has a single release point: R slots free when inference
+    completes, so the gate bounds engine concurrency in rollouts. G and B
+    slots free when the trainer consumes the group/batch, so the gate
+    enforces the --rl-generation-lag run-ahead cap in groups/batches
+    respectively.
+    """
 
     def __init__(self, *, capacity: int, submission: SubmissionGranularity) -> None:
         self._sem = asyncio.Semaphore(capacity)
         self._submission = submission
-        self._release_on = RELEASE_STATE_BY_SUBMISSION[submission]
         self.capacity = capacity
         # Observability counters, updated only on the configured submission
         # granularity (the only path that touches the semaphore). `held`
@@ -186,8 +204,8 @@ class _SubmissionGate:
             self.held += 1
             self.acquire_calls += 1
 
-    def release_after(self, state: ReleaseState) -> None:
-        if self._release_on == state:
+    def release_for(self, granularity: SubmissionGranularity) -> None:
+        if self._submission == granularity:
             self._sem.release()
             self.held -= 1
             self.release_calls += 1
@@ -330,7 +348,7 @@ class _RolloutPipeline:
             self.request, item.params.inference_request
         )
         inferred_at = time.monotonic()
-        self.gate.release_after("inferred")
+        self.gate.release_for("R")
         if item.infer_dequeued_at:
             self.engine_dwell.append(inferred_at - item.infer_dequeued_at)
         self.inferred_count += 1
@@ -359,7 +377,7 @@ class _RolloutPipeline:
                 rollouts = await asyncio.gather(
                     *[item.item.params.build_rollout(item.response) for item in completed]
                 )
-                self.gate.release_after("assembled")
+                self.gate.release_for("G")
                 self.assembled_count += 1
                 # NOTE: this filter is currently non-functional dead code:
                 # _GranularityConfig._validate rejects filter_groups_with_same_reward
@@ -419,12 +437,7 @@ class _RolloutPipeline:
                 next_batch_id += 1
                 for group in batch:
                     yield group
-                self.gate.release_after("consumed")
-=======
-    agent: "GroupedRolloutGenerator"
-    env_id: str
-    num_groups: int
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
+                self.gate.release_for("B")
 
 
 class GroupedRolloutGenerator(Agent, ABC):
@@ -432,7 +445,6 @@ class GroupedRolloutGenerator(Agent, ABC):
 
     @abstractmethod
     async def prepare_group_rollout(self, request: GroupedRolloutRequest) -> GroupRolloutParams:
-<<<<<<< HEAD
         """Return the params for one group's rollouts.
 
         Called once per group by _RolloutPipeline.stage_prepare. The returned
@@ -457,29 +469,6 @@ class GroupedRolloutGenerator(Agent, ABC):
         infer_task = asyncio.create_task(pipeline.stage_infer())
         assemble_task = asyncio.create_task(pipeline.stage_assemble())
         tasks = (stage_prepare_task, infer_task, assemble_task)
-
-        try:
-            async for group in pipeline.stage_consume():
-                yield group
-        finally:
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            self._active_pipeline = None
-=======
-        """Return the params for one group's rollouts."""
-        ...
-
-    def rollout_allocations(self, num_groups: int) -> list[EnvAllocation]:
-        """Returns each env's per-trainer-batch allocation, in env order."""
-        return [
-            EnvAllocation(
-                agent=self,
-                env_id=getattr(self, "env_id", None) or "rollout",
-                num_groups=num_groups,
-            )
-        ]
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     def take_restored_group(self, env_id: str) -> RolloutGroup | None:
         """Return one recovered group for ``env_id``, if one is available."""

@@ -2,8 +2,10 @@
 import pytest
 import torch
 
+from megatron.core.extensions.transformer_engine import te_general_gemm
 from megatron.core.tensor_parallel.layers import (
     linear_with_frozen_weight,
+    linear_with_grad_accumulation_and_async_allreduce,
     param_is_not_tensor_parallel_duplicate,
 )
 from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region

@@ -957,8 +957,7 @@ class MHCCheckpointManager:
                 for output in ckpt.outputs:
                     ckpt.output_slot.validate_output(output)
                 continue
-            for output in ckpt.outputs:
-                output.untyped_storage().resize_(0)
+            ckpt._discard_outputs()
         self._outputs_discarded = True
 
     def recompute_until(self, phase) -> None:
@@ -1028,7 +1027,14 @@ class CheckpointWithoutOutput(object):
     discarded output tensors are directly saved in the following modules for backward computation.
     """
 
-    def __init__(self, fp8=False, ckpt_manager=None, output_slot=None, recompute_phase=None):
+    def __init__(
+        self,
+        fp8=False,
+        ckpt_manager=None,
+        output_slot=None,
+        recompute_phase=None,
+        retain_input_tensors=False,
+    ):
         """
         Initialize CheckpointWithoutOutput.
 
@@ -1042,11 +1048,14 @@ class CheckpointWithoutOutput(object):
                          producer and consumed at its captured address.
             recompute_phase: Earliest explicit backward barrier that needs this
                              checkpoint. Defaults to the conservative first phase.
+            retain_input_tensors: Whether outputs sharing storage with checkpoint inputs
+                                  should be retained when discarding outputs.
         """
         from megatron.core.transformer.mhc_recompute import MHCRecomputeArenaSlot, MHCRecomputePhase
 
         self.fp8 = bool(fp8)
         self.ckpt_manager = ckpt_manager
+        self.retain_input_tensors = retain_input_tensors
         if output_slot is not None and not isinstance(output_slot, MHCRecomputeArenaSlot):
             raise TypeError("output_slot must be an MHCRecomputeArenaSlot")
         self.output_slot = output_slot

@@ -1296,8 +1296,13 @@ def maybe_save_dataloader_state(
 
     # Save dataloader state for each data parallel rank only once.
     first_rank = (
-        mpu.is_pipeline_first_stage(ignore_virtual=True)
-        and mpu.get_tensor_model_parallel_rank() == 0
+        get_pg_rank(pp_group) == 0
+        if pp_group is not None
+        else mpu.is_pipeline_first_stage(ignore_virtual=True)
+    ) and (
+        get_pg_rank(tp_group) == 0
+        if tp_group is not None
+        else mpu.get_tensor_model_parallel_rank() == 0
     )
     if not first_rank:
         return
@@ -1307,7 +1312,19 @@ def maybe_save_dataloader_state(
     if dp_rank == 0:
         print(f'saving dataloader checkpoint at iteration {iteration} to {dataloader_save_path}')
     data_state_save_path = get_checkpoint_name(
-        dataloader_save_path, iteration, basename=f'train_dataloader_dprank{dp_rank:03d}.pt'
+        dataloader_save_path,
+        iteration,
+        pipeline_parallel=(
+            get_pg_size(pp_group) > 1
+            if pp_group is not None
+            else mpu.get_pipeline_model_parallel_world_size() > 1
+        ),
+        # Dataloader state is sharded only by DP rank. Keep it in the canonical TP0/PP0 directory.
+        tensor_rank=0,
+        pipeline_rank=0,
+        expert_parallel=False,
+        expert_rank=0,
+        basename=f'train_dataloader_dprank{dp_rank:03d}.pt',
     )
 
     data_parallel_group = dp_group if dp_group is not None else mpu.get_data_parallel_group()

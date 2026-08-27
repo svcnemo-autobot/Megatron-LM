@@ -2,7 +2,6 @@
 
 import contextlib
 import gc
-
 import warnings
 from unittest.mock import Mock, patch
 

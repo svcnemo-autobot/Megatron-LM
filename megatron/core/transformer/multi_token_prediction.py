@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import warnings
 from contextlib import nullcontext
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 import torch

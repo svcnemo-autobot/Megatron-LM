@@ -5,8 +5,8 @@ import torch
 
 from megatron.core.tensor_parallel.random import (
     CheckpointWithoutOutput,
-    CheckpointWithoutOutputManager,
     CudaRNGStatesTracker,
+    MHCCheckpointManager,
     checkpoint,
     convert_cuda_rng_state,
     get_cuda_rng_tracker,
@@ -344,7 +344,7 @@ def test_checkpoint_without_output_retain_input_tensors(use_manager):
         return normed + residual
 
     def checkpoint_forward(x):
-        manager = CheckpointWithoutOutputManager() if use_manager else None
+        manager = MHCCheckpointManager() if use_manager else None
         ckpt = CheckpointWithoutOutput(ckpt_manager=manager, retain_input_tensors=True)
         normed, residual = ckpt.checkpoint(fused_norm, x)
         y = normed + residual

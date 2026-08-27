@@ -90,6 +90,7 @@ from megatron.rl.agent.api import (
     RewardEvaluationResult,
     Rollout,
     RolloutGroup,
+    Rollouts,
     TokenRollout,
 )
 from megatron.rl.agent.rollout_pipeline import RolloutPipeline
@@ -302,6 +303,39 @@ def verify_model_weights_swap(
             train_core.train()
         if inf_was_training:
             inf_core.train()
+
+
+class EpochBoundary(NamedTuple):
+    """RLE boundary: `epoch` applies from `start_token_index` until the next boundary."""
+
+    start_token_index: int
+    epoch: int
+
+
+RolloutEpochBoundaries: TypeAlias = list[list[EpochBoundary]]
+"""Per-turn lists of epoch boundaries over the turn's cumulative token sequence."""
+
+
+class EpochSegment(NamedTuple):
+    """A run of `token_count` consecutive tokens sharing one epoch."""
+
+    epoch: int
+    token_count: int
+
+
+class AlignedEpochSegment(NamedTuple):
+    """A run of `token_count` tokens whose policy and KV-cache epochs are both constant."""
+
+    policy_epoch: int
+    kv_cache_epoch: int
+    token_count: int
+
+
+RolloutEpochSegments: TypeAlias = list[EpochSegment]
+"""One rollout's (epoch, token_count) segments, covering its trajectory in order."""
+
+GroupedEpochSegments: TypeAlias = list[list[RolloutEpochSegments]]
+"""Per-group, per-rollout epoch segments."""
 
 
 @dataclass(slots=True)
@@ -1077,9 +1111,9 @@ def calculate_grpo_advantages(
 
     rewards = np.asarray(rewards, dtype=np.float64)
     num_turns = np.asarray(num_turns, dtype=np.int64)
-    assert rewards.shape == num_turns.shape, (
-        f"rewards and num_turns must have matching shape, got {rewards.shape} and {num_turns.shape}"
-    )
+    assert (
+        rewards.shape == num_turns.shape
+    ), f"rewards and num_turns must have matching shape, got {rewards.shape} and {num_turns.shape}"
 
     # rewards are [num_groups, group_size]; making an assumption that all groups are the same size!
     # @vitalyk: this will go away when we start sending env-based sample reqs.
@@ -1099,8 +1133,7 @@ def calculate_grpo_advantages(
 
 
 def expand_epoch_segments(
-    per_turn_boundaries: RolloutEpochBoundaries,
-    per_turn_token_counts: list[int],
+    per_turn_boundaries: RolloutEpochBoundaries, per_turn_token_counts: list[int]
 ) -> RolloutEpochSegments:
     """Expand RLE (start_token_index, epoch) boundaries into (epoch, token_count) segments."""
     segments: RolloutEpochSegments = []
@@ -1359,9 +1392,7 @@ def prep_wandb_metrics(
     rollout_metrics = {
         'rollout/count': total_rollouts,
         'failed_rollouts/count': failed_rollouts,
-        'failed_rollouts/ratio': (
-            failed_rollouts / total_rollouts if total_rollouts else 0.0
-        ),
+        'failed_rollouts/ratio': (failed_rollouts / total_rollouts if total_rollouts else 0.0),
     }
 
     group_table = wandb_writer.Table(
@@ -1372,11 +1403,7 @@ def prep_wandb_metrics(
     # or every surviving rollout is a zero-turn placeholder (rewards exist but the
     # length/turn stats below would reduce over empty sequences). Keep the failure
     # counters: they are the one signal such a wave still carries.
-    if (
-        len(advantages) == 0
-        or not rewards
-        or not any(keep for g in real_mask for keep in g)
-    ):
+    if len(advantages) == 0 or not rewards or not any(keep for g in real_mask for keep in g):
         logger.warning(
             "prep_wandb_metrics: empty wave (0 usable rollouts); "
             "skipping rollout metrics this iteration."
@@ -1385,9 +1412,7 @@ def prep_wandb_metrics(
 
     def _real(grouped):
         """Grouped per-rollout entries with placeholder (zero-turn) rollouts removed."""
-        return [
-            [x for x, keep in zip(g, m) if keep] for g, m in zip(grouped, real_mask)
-        ]
+        return [[x for x, keep in zip(g, m) if keep] for g, m in zip(grouped, real_mask)]
 
     # Raw delivery aggregates (mean_reward, rewards_hist) keep failures. All other metrics do
     # not. Staleness and eviction telemetry filters through `joined` instead: placeholders pop
@@ -1522,9 +1547,11 @@ def prep_wandb_metrics(
             columns=['Trajectories', 'Tokens', 'Rewards'],
             rows=[
                 [
-                    tokenizer.detokenize(r.trajectory[-1])
-                    if isinstance(r, TokenRollout)
-                    else r.trajectory[-1],
+                    (
+                        tokenizer.detokenize(r.trajectory[-1])
+                        if isinstance(r, TokenRollout)
+                        else r.trajectory[-1]
+                    ),
                     r.trajectory,
                     r.reward,
                 ]
@@ -1874,9 +1901,7 @@ def prepare_trajectories(
 
     # Some sanity checks regarding the tokenization. Pad units start with the pad
     # token rather than bos, so the bos-equality check only applies to real rows.
-    real_rows = torch.tensor(
-        [rollout is not None for rollout in rows], dtype=torch.bool
-    )
+    real_rows = torch.tensor([rollout is not None for rollout in rows], dtype=torch.bool)
     if not skip_bos_token:
         assert (
             tokenizer.bos is None or (trajs[real_rows][:, 0] == tokenizer.bos).all()
@@ -1892,8 +1917,7 @@ def prepare_trajectories(
     # so the "single eod" sanity check only applies to single-turn rows.
     single_turn = torch.tensor(single_turn_rows, dtype=torch.bool)
     assert (
-        (trajs[single_turn] * generation_masks[single_turn].int() == tokenizer.eod).sum(axis=1)
-        <= 1
+        (trajs[single_turn] * generation_masks[single_turn].int() == tokenizer.eod).sum(axis=1) <= 1
     ).all(), "Only one eod per trajectory in single-turn generated tokens."
     # TODO(rkirby):
     # We should avoid the tokenizer pad token being the same as the eod token for proper loss masking,
@@ -1911,8 +1935,8 @@ def logprobs_forward_step(data_iterator, model, is_correction, packing_context=N
         # When using sequence packing, the data iterator returns a tuple with a single element, the bin index.
         bin_tensor = next(data_iterator)[0]
         # TODO(jalbericiola): change for named tuple
-        (b_trajs, _, _, _, b_posids, _, _, _, _, _, b_packed_seq_params) = (
-            load_packed_data_by_index(bin_tensor.item(), packing_context, is_correction)
+        b_trajs, _, _, _, b_posids, _, _, _, _, _, b_packed_seq_params = load_packed_data_by_index(
+            bin_tensor.item(), packing_context, is_correction
         )
     else:
         b_trajs, b_posids = next(data_iterator)
@@ -2098,7 +2122,7 @@ def prepare_data_for_update(
 
         with nvtx_range("rl/prepare-trajectories", time=True):
             trajs, generation_masks, inference_logprobs = prepare_trajectories(
-                rows, tokenizer, args.seq_length, args.rl_skip_bos_token,
+                rows, tokenizer, args.seq_length, args.rl_skip_bos_token
             )
         if not has_inference_logprobs:
             inference_logprobs = None
@@ -2238,7 +2262,6 @@ def prepare_data_for_update(
                         group_stats=group_stats,
                         filled_mask=packed_inference_filled_mask,
                     )
-
 
                     # Store packed inference logprobs in packing context
                     packing_context.packed_inference_logprobs = packed_inference_logprobs.cuda()

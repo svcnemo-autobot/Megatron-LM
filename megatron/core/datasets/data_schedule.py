@@ -1,6 +1,5 @@
 # Copyright (c) 2025 NVIDIA CORPORATION.  All rights reserved.
 
-import enum
 from typing import Any, Dict, List, Optional, Type
 
 import torch
@@ -880,11 +879,9 @@ try:
     # Register the TE CUDA kernels
     import transformer_engine  # pylint: disable=unused-import
 
-    # Alias the PyTorch wrapper so we can call tex.* APIs
-    import transformer_engine_torch as tex
 except ImportError:
-    # TE isn't installed or the torch wrapper is missing
-    tex = None
+    # TE is not installed.
+    pass
 
 
 class HybridCPDataLoaderWrapper:

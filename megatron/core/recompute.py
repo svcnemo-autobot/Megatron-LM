@@ -5,7 +5,6 @@ from typing import List, Optional, Set, Tuple, Union
 from torch import Tensor
 
 from megatron.core import tensor_parallel
-from megatron.core.context_parallel import ContextParallelLayoutState
 from megatron.core.extensions.transformer_engine import HAVE_TE
 from megatron.core.fp4_utils import get_fp4_context
 from megatron.core.fp8_utils import get_fp8_context

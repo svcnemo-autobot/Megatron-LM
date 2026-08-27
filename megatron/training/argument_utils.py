@@ -17,11 +17,7 @@ import torch
 import torch.nn.functional as F
 
 from megatron.core.transformer import TransformerConfig
-<<<<<<< HEAD
 from megatron.core.transformer.spec_utils import ModuleSpec, import_module
-=======
-from megatron.core.transformer.spec_utils import import_module
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 from megatron.training.config import (
     CheckpointConfig,
     DistributedInitConfig,
@@ -564,21 +560,8 @@ def _default_config_from_args(cls: type, args: Namespace, return_instance: bool 
         return kwargs
 
 
-<<<<<<< HEAD
 def gpt_config_from_args(args: Namespace, config: TransformerConfig | None = None) -> Any:
     """Create a GPTModelConfig from the appropriate values in the `args` Namespace."""
-=======
-def gpt_config_from_args(
-    args: Namespace, config: TransformerConfig | None = None, model_config_cls: type = GPTModelConfig
-) -> Any:
-    """Create a GPTModelConfig (or a compatible subclass) from the `args` Namespace.
-
-    `model_config_cls` lets callers reuse this same arg-derivation logic for
-    subclasses that only override metadata (e.g. `builder`) and add no new fields,
-    such as `ModelOptModelConfig`.
-    """
-    assert issubclass(model_config_cls, GPTModelConfig)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     kwargs = {}
     if config is None:
@@ -620,27 +603,21 @@ def gpt_config_from_args(
         kwargs["vocab_size"] = args.vocab_size
         kwargs["should_pad_vocab"] = True
 
-<<<<<<< HEAD
     return GPTModelConfig(**kwargs)
 
 
-def hybrid_config_from_args(args: Namespace, config: TransformerConfig | None = None) -> Any:
-    """Create a HybridModelConfig from the appropriate values in the `args` Namespace."""
-=======
-    return model_config_cls(**kwargs)
-
-
 def hybrid_config_from_args(
-    args: Namespace, config: TransformerConfig | None = None, model_config_cls: type = HybridModelConfig
+    args: Namespace, config: TransformerConfig | None = None, model_config_cls: type | None = None
 ) -> Any:
     """Create a HybridModelConfig (or a compatible subclass) from the `args` Namespace.
 
-    `model_config_cls` lets callers reuse this same arg-derivation logic for
-    subclasses that only override metadata (e.g. `builder`) and add no new fields,
-    such as `ModelOptHybridModelConfig`.
+    `model_config_cls` lets callers reuse this arg-derivation logic for subclasses
+    that only override metadata (for example, `builder`) and add no new fields.
     """
-    assert issubclass(model_config_cls, HybridModelConfig)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
+    if model_config_cls is None:
+        model_config_cls = HybridModelConfig
+    else:
+        assert issubclass(model_config_cls, HybridModelConfig)
 
     kwargs = {}
     if config is None:
@@ -654,7 +631,6 @@ def hybrid_config_from_args(
             not transformer_cfg.inference_fuse_tp_communication
         ), "inference_fuse_tp_communication is not supported for HybridModel"
     elif args.spec is not None:
-<<<<<<< HEAD
         hybrid_stack_spec = import_module(args.spec)
         # ModuleSpec implements __call__ to build the described module, so a
         # generic callable check would instantiate static specs here before a
@@ -662,9 +638,6 @@ def hybrid_config_from_args(
         if callable(hybrid_stack_spec) and not isinstance(hybrid_stack_spec, ModuleSpec):
             hybrid_stack_spec = hybrid_stack_spec(transformer_cfg)
         kwargs["hybrid_stack_spec"] = hybrid_stack_spec
-=======
-        kwargs["hybrid_stack_spec"] = import_module(args.spec)
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
     kwargs["fp16_lm_cross_entropy"] = args.fp16_lm_cross_entropy
     kwargs["logit_dtype"] = getattr(args, "logit_dtype", None)
