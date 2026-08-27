@@ -198,7 +198,6 @@ class TokenizedRolloutGenerator(Agent, ABC):
 class EnvAllocation(NamedTuple):
     """One env's constant share of every trainer batch."""
 
-<<<<<<< HEAD
     @classmethod
     def from_request(cls, request: GroupedRolloutRequest) -> "_GranularityConfig":
         cls._validate(request)
@@ -483,11 +482,6 @@ class _RolloutPipeline:
                 for group in batch:
                     yield group
                 self.gate.release_after("consumed")
-=======
-    agent: "GroupedRolloutGenerator"
-    env_id: str
-    num_groups: int
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 
 class GroupedRolloutGenerator(Agent, ABC):
@@ -495,7 +489,6 @@ class GroupedRolloutGenerator(Agent, ABC):
 
     @abstractmethod
     async def prepare_group_rollout(self, request: GroupedRolloutRequest) -> GroupRolloutParams:
-<<<<<<< HEAD
         """Return the params for one group's rollouts.
 
         Called once per group by _RolloutPipeline.stage_prepare. The returned
@@ -529,20 +522,6 @@ class GroupedRolloutGenerator(Agent, ABC):
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             self._active_pipeline = None
-=======
-        """Return the params for one group's rollouts."""
-        ...
-
-    def rollout_allocations(self, num_groups: int) -> list[EnvAllocation]:
-        """Returns each env's per-trainer-batch allocation, in env order."""
-        return [
-            EnvAllocation(
-                agent=self,
-                env_id=getattr(self, "env_id", None) or "rollout",
-                num_groups=num_groups,
-            )
-        ]
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
 
 class EvaluationAgent(Agent, ABC):

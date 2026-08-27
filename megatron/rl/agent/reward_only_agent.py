@@ -86,7 +86,6 @@ class RewardOnlyAgent(RolloutGenerator, GroupedRolloutGenerator, PassAtEvaluatio
 
         return prompts[start_idx:end_idx]
 
-<<<<<<< HEAD
     async def _rollout_from_response(
         self,
         request: RolloutRequest | GroupedRolloutRequest,
@@ -97,16 +96,6 @@ class RewardOnlyAgent(RolloutGenerator, GroupedRolloutGenerator, PassAtEvaluatio
             request.inference_interface, ReturnsRaw
         ), "InferenceInterface must support raw_text return to provide rollouts."
         raw_text = response.raw_text
-=======
-    async def get_observation(
-        self,
-        turn_idx: int,
-        response: InferenceResponse,
-        conversation: list[LLMChatMessage],
-        golden: Any,
-    ) -> tuple[str | None, bool]:
-        """Return (observation, done) after a generation turn. Skipped on the last turn.
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 
         Override to implement multi-turn interactions. Must not mutate `conversation` or `golden`!
 

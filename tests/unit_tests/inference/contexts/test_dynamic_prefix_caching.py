@@ -933,38 +933,6 @@ class TestMambaPrefixCaching(PrefixCachingTestBase):
         )
 
     @pytest.mark.internal
-<<<<<<< HEAD
-=======
-    def test_hybrid_prefix_caching_without_mamba_budget_warns(self, caplog):
-        # Memory-only mode: prefix caching on a hybrid model without a Mamba cache
-        # budget is allowed (KV prefixes deduplicated for memory savings) but must
-        # warn that Mamba state caching and prefill skipping are disabled, and must
-        # not allocate a slot allocator.
-        import logging as _logging
-
-        with caplog.at_level(_logging.WARNING):
-            ctx = self._ctx(
-                mamba_config=self._mamba_config(),
-                enable_prefix_caching=True,
-                prefix_caching_mamba_gb=None,
-            )
-        assert ctx.is_hybrid_model
-        assert ctx.mamba_slot_allocator is None
-        assert "memory-only" in caplog.text
-
-    @pytest.mark.internal
-    def test_mamba_cache_budget_too_small_raises(self):
-        # The CUDA-graph extraction scratch (sized to the per-step token-budget
-        # cap, max_mamba_intermediate_states_per_step) is reserved from
-        # prefix_caching_mamba_gb before the durable cache is sized. A budget too
-        # small to fit the scratch plus at least one durable slot is a hard
-        # configuration error, not a silent over-allocation (which previously
-        # could OOM at startup).
-        with pytest.raises(ValueError, match="prefix cache budget"):
-            self._mctx(prefix_caching_mamba_gb=1e-5)
-
-    @pytest.mark.internal
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     def test_mamba_prefill_skip_and_zero_prefill(self):
         # mamba match limits prefill skip
         ctx = self._mctx()

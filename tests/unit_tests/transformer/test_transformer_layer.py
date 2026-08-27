@@ -19,7 +19,6 @@ from megatron.core.models.gpt.gpt_layer_specs import (
 from megatron.core.models.gpt.moe_module_specs import get_moe_module_spec
 from megatron.core.tensor_parallel.random import (
     HAVE_TE,
-<<<<<<< HEAD
     MHCCheckpointManager,
     initialize_rng_tracker,
     model_parallel_cuda_manual_seed,
@@ -29,22 +28,6 @@ from megatron.core.transformer.enums import AttnMaskType, CudaGraphModule, Infer
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import (
     HyperConnectionTransformerLayer,
-=======
-    CheckpointWithoutOutputManager,
-    initialize_rng_tracker,
-    model_parallel_cuda_manual_seed,
-)
-from megatron.core.transformer.cuda_graphs import (
-    CudaGraphManager,
-    _CudagraphGlobalRecord,
-    create_cudagraphs,
-)
-from megatron.core.transformer.enums import CudaGraphModule, InferenceCudaGraphScope
-from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.transformer.transformer_layer import (
-    HyperConnectionTransformerLayer,
-    MoETransformerLayer,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
     TransformerLayer,
     TransformerLayerSubmodules,
     get_transformer_layer_offset,
@@ -53,25 +36,6 @@ from megatron.core.utils import is_te_min_version
 from tests.unit_tests.test_utilities import Utils
 
 
-<<<<<<< HEAD
-=======
-def _make_mhc_layer_spec(**kwargs):
-    """Build a layer spec with HyperConnectionModule submodules.
-
-    The ``enable_hyper_connection`` kwarg on ``gpt_layer_specs`` is added by
-    the GPT-wiring follow-up split, so this helper patches the mHC submodules
-    directly to keep the unit tests self-contained for this split.
-    """
-    from megatron.core.transformer.hyper_connection import HyperConnectionModule
-
-    layer_spec = get_gpt_layer_with_transformer_engine_spec(**kwargs)
-    layer_spec.module = HyperConnectionTransformerLayer
-    layer_spec.submodules.self_attention_hyper_connection = HyperConnectionModule
-    layer_spec.submodules.mlp_hyper_connection = HyperConnectionModule
-    return layer_spec
-
-
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 def _make_mhc_config(hidden_size=64, num_streams=4, **extra):
     """Build a TransformerConfig with common MHC defaults.
 
@@ -83,13 +47,8 @@ def _make_mhc_config(hidden_size=64, num_streams=4, **extra):
         hidden_size=hidden_size,
         num_attention_heads=4,
         use_cpu_initialization=True,
-<<<<<<< HEAD
         enable_hyper_connections=True,
         num_residual_streams=num_streams,
-=======
-        enable_mhc_connections=True,
-        mhc_num_residual_streams=num_streams,
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
         mhc_sinkhorn_iterations=5,
         mhc_init_gating_factor=0.01,
         hidden_dropout=0.0,
@@ -99,7 +58,6 @@ def _make_mhc_config(hidden_size=64, num_streams=4, **extra):
     return TransformerConfig(**base)
 
 
-<<<<<<< HEAD
 def _make_cuda_graph_gpt_block(**config_kwargs):
     cfg = TransformerConfig(
         num_layers=2,
@@ -128,8 +86,6 @@ def _no_layers_have_manager(block) -> bool:
     return all(not hasattr(layer, 'cudagraph_manager') for layer in block.layers)
 
 
-=======
->>>>>>> f481e6361520dcac1554891a6ae83b353eb1d91b
 class TestParallelTransformerLayer:
 
     def setup_method(self, method):
