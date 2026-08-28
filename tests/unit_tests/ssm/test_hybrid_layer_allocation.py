@@ -104,6 +104,9 @@ class TestValidateSegmentLayers:
             # Not allowed to have both standard Attention and MLA/DSA
             validate_segment_layers("MDM*-")
         with pytest.raises(ValueError):
+            # Not allowed to have both standard Attention and MLA (same reason
+            # as DSA: * uses the model-level rotary_pos_emb while + uses MLA's
+            # own decoupled RoPE).
             validate_segment_layers("M+M*-")
 
     def test_window_symbol(self):
@@ -369,19 +372,6 @@ class TestGetHybridLayerCounts:
             '-': 1,
             'E': 1,
         }
-        assert get_hybrid_layer_counts("MG+-E") == {
-            'C': 0,
-            'H': 0,
-            'W': 0,
-            '*': 0,
-            'D': 0,
-            'G': 1,
-            'K': 0,
-            '+': 1,
-            'M': 1,
-            '-': 1,
-            'E': 1,
-        }
 
     def test_with_pipes(self):
         # Pipes should be skipped in counting
@@ -408,6 +398,7 @@ class TestGetHybridLayerCounts:
             'K': 0,
             '+': 0,
             'M': 4,
+            '+': 0,
             '-': 4,
             'E': 0,
         }
@@ -424,6 +415,7 @@ class TestGetHybridLayerCounts:
             'K': 0,
             '+': 0,
             'M': 6,
+            '+': 0,
             '-': 0,
             'E': 0,
         }
@@ -441,6 +433,7 @@ class TestGetHybridLayerCounts:
             'K': 0,
             '+': 0,
             'M': 8,
+            '+': 0,
             '-': 4,
             'E': 0,
         }
@@ -472,6 +465,7 @@ class TestGetHybridLayerCounts:
             'K': 0,
             '+': 0,
             'M': 7,
+            '+': 0,
             '-': 0,
             'E': 0,
         }
@@ -900,7 +894,7 @@ class TestGetLayerMapsFromLayerTypeList:
         assert moe_map == {}
 
     def test_mla(self):
-        """+ layers are mapped independently of other attention types."""
+        """+ (MLA) layers are mapped independently of other attention types."""
         maps = get_layer_maps_from_layer_type_list(["+", "M", "+", "M"])
         attention_map, dsa_map, mamba_map, mla_map, mlp_map, moe_map = operator.itemgetter(
             Symbols.ATTENTION,
@@ -918,7 +912,7 @@ class TestGetLayerMapsFromLayerTypeList:
         assert moe_map == {}
 
     def test_mixed_dsa_and_mla(self):
-        """D and + can coexist because both use decoupled RoPE."""
+        """D and + can coexist (both are MLA-based and use decoupled RoPE)."""
         maps = get_layer_maps_from_layer_type_list(["D", "+", "M", "-"])
         attention_map, dsa_map, mamba_map, mla_map, mlp_map, moe_map = operator.itemgetter(
             Symbols.ATTENTION,

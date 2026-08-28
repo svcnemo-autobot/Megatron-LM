@@ -17,6 +17,19 @@ rank = int(os.environ.get('RANK', 0))
 if rank != 0:
     warnings.filterwarnings("ignore", category=UserWarning)
     warnings.filterwarnings("ignore", category=FutureWarning)
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+    # Some libraries (e.g., CUTLASS DSL) use warnings.catch_warnings() with
+    # simplefilter("always"), which overrides the filters above. Override
+    # showwarning as a fallback to suppress warnings that slip through.
+    _original_showwarning = warnings.showwarning
+
+    def _rank0_only_showwarning(message, category, filename, lineno, file=None, line=None):
+        if issubclass(category, (UserWarning, FutureWarning, DeprecationWarning)):
+            return
+        _original_showwarning(message, category, filename, lineno, file, line)
+
+    warnings.showwarning = _rank0_only_showwarning
 
 from functools import lru_cache, partial
 from typing import Any, List, Optional, Tuple
@@ -31,6 +44,7 @@ from megatron.core.datasets.data_schedule import get_batch_on_this_rank_for_sequ
 from megatron.core.datasets.gpt_dataset import GPTDataset, GPTDatasetConfig, MockGPTDataset
 from megatron.core.enums import ModelType
 from megatron.core.models.gpt import GPTModel
+from megatron.core.package_info import __version__ as mcore_version
 from megatron.core.packed_seq_params import (
     PackedSeqParams,
     get_thd_padding_kwargs,
@@ -185,15 +199,7 @@ def get_batch(data_iterator, vp_stage: Optional[int] = None):
             qkv_format='thd',
         )
         finalize_packed_seq_params(packed_seq_params)
-        return (
-            None,
-            None,
-            None,
-            None,
-            None,
-            packed_seq_params,
-            None,
-        )
+        return (None, None, None, None, None, packed_seq_params, None)
 
     thd_tail_padding_policy = resolve_thd_tail_padding_policy(config)
     if cu_seqlens is None:
