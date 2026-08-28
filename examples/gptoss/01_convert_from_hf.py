@@ -36,7 +36,7 @@ if __name__ == "__main__":
     print(f"Converting {HF_MODEL} to Megatron format...")
     print(f"Save path: {SAVE_PATH}")
     
-    bridge = AutoBridge.from_hf_pretrained(HF_MODEL, trust_remote_code=True)
+    bridge = AutoBridge.from_hf_pretrained(HF_MODEL, trust_remote_code=False)
     provider = bridge.to_megatron_provider()
     # Update these configs as needed
     provider.expert_tensor_parallel_size = 1

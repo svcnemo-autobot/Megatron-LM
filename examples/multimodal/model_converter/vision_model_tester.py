@@ -76,7 +76,7 @@ def run_mcore_vision(model_path):
 def run_hf_vision(model_name):
     """Run HF vision model."""
     model = (
-        AutoModel.from_pretrained(model_name, torch_dtype=torch.bfloat16, trust_remote_code=True)
+        AutoModel.from_pretrained(model_name, torch_dtype=torch.bfloat16, trust_remote_code=False)
         .cuda()
         .eval()
     )

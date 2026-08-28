@@ -9,7 +9,7 @@ def convert(model_name, output_path, tensor_parallel_size, use_te):
     """Convert InternViT HF checkpoint to mcore."""
     hf_model = AutoModel.from_pretrained(
         model_name,
-        trust_remote_code=True
+        trust_remote_code=False
     )
 
     hf_state_dict = hf_model.state_dict()
