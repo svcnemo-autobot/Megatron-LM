@@ -43,7 +43,7 @@ if __name__ == "__main__":
     print(f"Converting {MEGATRON_MODEL} to HuggingFace {HF_MODEL} format...")
     print(f"Save path: {SAVE_PATH}")
     
-    bridge = AutoBridge.from_hf_pretrained(HF_MODEL, trust_remote_code=False)
+    bridge = AutoBridge.from_hf_pretrained(HF_MODEL, trust_remote_code=True)
     bridge.export_ckpt(
         MEGATRON_MODEL,
         SAVE_PATH,
