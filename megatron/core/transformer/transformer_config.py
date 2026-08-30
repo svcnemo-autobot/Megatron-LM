@@ -279,7 +279,14 @@ class TransformerConfig(ModelParallelConfig):
     defualts to False. Setting qk_clip will automatically log the max logit"""
 
     attention_output_gate: bool = False
-    """Whether to apply output gate to the attention layers."""
+    """Whether to apply output gating to attention layers."""
+
+    gated_attention_proj_granularity: Literal['elementwise', 'headwise'] = "elementwise"
+    """Projection granularity for ``attention_output_gate``.
+
+    ``elementwise`` projects one gate per attention output element. ``headwise`` projects one
+    scalar gate per attention head and is currently supported only by Multi-Latent Attention.
+    """
 
     test_mode: bool = False
     """Whether to run real-time tests."""
@@ -301,13 +308,13 @@ class TransformerConfig(ModelParallelConfig):
     ####################
     # attention variant
     ####################
-    experimental_attention_variant: Optional[Literal['gdn', 'gdn2', 'kda', 'dsa', 'gated_delta_net']] = (
-        None
-    )
-    """Type of attention variant to use. Currently support gdn, gdn2 and dsa.
+    experimental_attention_variant: Optional[
+        Literal['gdn', 'gdn2', 'kda', 'dsa', 'gated_delta_net']
+    ] = None
+    """Type of attention variant to use. Currently supports gdn, gdn2, kda, and dsa.
     gdn2 selects the GDN2 (Gated DeltaNet-2) variant of the gated delta net layer, with
     channel-wise decay, erase and write gates; it requires flash-linear-attention >= 0.5.1.
-    gdn and gdn2 select the hybrid layer pattern symbol 'G'; kda selects symbol 'K'.
+    kda selects Kimi Delta Attention and the hybrid layer pattern symbol 'K'.
     'gated_delta_net' is a deprecated alias of 'gdn': it is normalized to 'gdn' in
     __post_init__ and emits a DeprecationWarning."""
 
@@ -1597,6 +1604,17 @@ class TransformerConfig(ModelParallelConfig):
         if self.num_query_groups is None:
             self.num_query_groups = self.num_attention_heads
 
+        if self.gated_attention_proj_granularity not in ('elementwise', 'headwise'):
+            raise ValueError(
+                "gated_attention_proj_granularity must be either 'elementwise' or 'headwise', "
+                f"got {self.gated_attention_proj_granularity!r}."
+            )
+        if self.gated_attention_proj_granularity == 'headwise' and not self.multi_latent_attention:
+            raise ValueError(
+                "Regular attention does not support headwise "
+                "gated_attention_proj_granularity; use 'elementwise'."
+            )
+
         if (
             self.num_query_groups % self.tensor_model_parallel_size != 0
             and self.tensor_model_parallel_size % self.num_query_groups != 0
@@ -1610,10 +1628,10 @@ class TransformerConfig(ModelParallelConfig):
             # gdn2 may also be enabled for GDN layers built via the hybrid layer pattern
             # symbol 'G', where linear_attention_freq is unused; the GPT experimental
             # attention route raises a clear error downstream if it is missing.
-            if self.experimental_attention_variant == "gdn":
+            if self.experimental_attention_variant in ("gdn", "kda") and not self.is_hybrid_model:
                 assert (
                     self.linear_attention_freq is not None
-                ), "linear_attention_freq must be set for linear gdn."
+                ), "linear_attention_freq must be set for a standalone linear attention variant."
 
             # Check required parameters
             assert (
@@ -1631,6 +1649,20 @@ class TransformerConfig(ModelParallelConfig):
             assert (
                 self.linear_num_value_heads is not None
             ), "linear_num_value_heads must be set for gated delta net."
+            if self.experimental_attention_variant == "kda":
+                if self.linear_num_key_heads != self.linear_num_value_heads:
+                    raise ValueError("KDA requires equal key and value head counts.")
+                if self.linear_key_head_dim != self.linear_value_head_dim:
+                    raise ValueError("KDA requires equal key and value head dimensions.")
+                if self.kda_safe_gate:
+                    if self.kda_lower_bound is None:
+                        raise ValueError("KDA requires kda_lower_bound when kda_safe_gate=True.")
+                    if not (-5.0 <= self.kda_lower_bound < 0.0):
+                        raise ValueError(
+                            "KDA requires kda_lower_bound to be in [-5, 0) "
+                            "when kda_safe_gate=True."
+                        )
+
             assert self.linear_num_value_heads % self.linear_num_key_heads == 0, (
                 f"linear_num_value_heads ({self.linear_num_value_heads}) must be a multiple of "
                 f"linear_num_key_heads ({self.linear_num_key_heads})."
@@ -1646,15 +1678,6 @@ class TransformerConfig(ModelParallelConfig):
                 f"{self.linear_num_value_heads=} must be a multiple of "
                 f"({self.tensor_model_parallel_size=} * {self.context_parallel_size=})."
             )
-
-            if self.experimental_attention_variant == "kda" and self.kda_safe_gate:
-                if self.kda_lower_bound is None:
-                    raise ValueError("KDA requires kda_lower_bound when kda_safe_gate=True.")
-                if not (-5.0 <= self.kda_lower_bound < 0.0):
-                    raise ValueError(
-                        "KDA requires kda_lower_bound to be in [-5, 0) "
-                        "when kda_safe_gate=True."
-                    )
         elif self.experimental_attention_variant == "dsa":
             _validate_dsa_kernel_backend_dependencies(self.dsa_kernel_backend)
             if self.add_bias_linear:
@@ -3555,8 +3578,11 @@ class MLATransformerConfig(TransformerConfig):
         if self.multi_latent_attention and self.apply_rope_fusion and self.rope_type != "yarn":
             raise ValueError("apply_rope_fusion for MLA only works with YARN RoPE.")
 
-        if self.attention_output_gate:
-            raise NotImplementedError("Output gate is not supported for MLA yet.")
+        if self.attention_output_gate and self.mla_down_proj_fusion:
+            raise ValueError(
+                "MLA output gating does not support fused down projections; "
+                "disable mla_down_proj_fusion to use the unfused path."
+            )
 
         if self.cache_mla_latents:
             assert (
