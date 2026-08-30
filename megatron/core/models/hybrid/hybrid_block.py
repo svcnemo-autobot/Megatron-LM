@@ -60,6 +60,7 @@ class HybridStackSubmodules:
 
     mamba_layer: Union[ModuleSpec, type] = IdentityOp
     gdn_layer: Union[ModuleSpec, type] = IdentityOp
+    kda_layer: Union[ModuleSpec, type] = IdentityOp
     attention_layer: Union[ModuleSpec, type] = IdentityOp
     dsa_layer: Union[ModuleSpec, type] = IdentityOp
     mla_layer: Union[ModuleSpec, type] = IdentityOp
@@ -256,17 +257,21 @@ class HybridStack(MegatronModule):
                         add_layer_offset=False,
                         name=(name + f".layers.{i}") if name is not None else None,
                     )
-                elif type(layer_config) is layer_utils.GDNLayerConfig:
-                    gdn_layer_spec = submodules.gdn_layer
+                elif type(layer_config) in (layer_utils.GDNLayerConfig, layer_utils.KDALayerConfig):
+                    layer_spec = (
+                        submodules.kda_layer
+                        if type(layer_config) is layer_utils.KDALayerConfig
+                        else submodules.gdn_layer
+                    )
                     if layer_config.experimental_attention_variant == "gdn2":
                         # 'G' layers build the GDN2 variant when the gdn2 experimental
                         # attention variant is selected.
                         from megatron.core.ssm.gated_delta_net import GatedDeltaNet2
 
-                        gdn_layer_spec = copy.deepcopy(gdn_layer_spec)
-                        gdn_layer_spec.submodules.self_attention.module = GatedDeltaNet2
+                        layer_spec = copy.deepcopy(layer_spec)
+                        layer_spec.submodules.self_attention.module = GatedDeltaNet2
                     layer = build_module(
-                        gdn_layer_spec,
+                        layer_spec,
                         config=layer_config,
                         layer_number=layer_number,
                         pg_collection=pg_collection,

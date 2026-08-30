@@ -1,6 +1,7 @@
 # Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
 
 from megatron.core.ssm.gdn_layer_config import GDNLayerConfig
+from megatron.core.ssm.kda_layer_config import KDALayerConfig
 from megatron.core.ssm.mamba_layer_config import MambaLayerConfig
 from megatron.core.ssm.mlp_layer_config import MLPLayerConfig
 from megatron.core.transformer.attention_layer_config import AttentionLayerConfig
@@ -15,6 +16,7 @@ class Symbols:
 
     MAMBA = "M"
     GDN = 'G'
+    KDA = 'K'
     ATTENTION = "*"
     DS_ATTENTION = "D"
     MLA = "+"
@@ -25,13 +27,20 @@ class Symbols:
     LAYER_CONFIG_MAP = {
         MAMBA: MambaLayerConfig,
         GDN: GDNLayerConfig,
+        KDA: KDALayerConfig,
         ATTENTION: AttentionLayerConfig,
         DS_ATTENTION: DSALayerConfig,
         MLA: MLALayerConfig,
         MLP: MLPLayerConfig,
         MOE: MoELayerConfig,
     }
-    ATTENTION_LAYER_CONFIGS = {AttentionLayerConfig, DSALayerConfig, MLALayerConfig}
+    ATTENTION_LAYER_CONFIGS = {
+        AttentionLayerConfig,
+        DSALayerConfig,
+        MLALayerConfig,
+        GDNLayerConfig,
+        KDALayerConfig,
+    }
 
     @classmethod
     def name_sorted_valid_layer_symbols(cls) -> list[str]:
@@ -108,6 +117,8 @@ def validate_tp_comm_overlap(
         unsupported_features.append("MLA")
     if Symbols.DS_ATTENTION in segment:
         unsupported_features.append("DSA")
+    if Symbols.KDA in segment:
+        unsupported_features.append("KDA")
     if has_mtp:
         unsupported_features.append("MTP")
 

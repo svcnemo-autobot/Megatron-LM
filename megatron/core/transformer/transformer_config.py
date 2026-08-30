@@ -301,13 +301,13 @@ class TransformerConfig(ModelParallelConfig):
     ####################
     # attention variant
     ####################
-    experimental_attention_variant: Optional[Literal['gdn', 'gdn2', 'dsa', 'gated_delta_net']] = (
+    experimental_attention_variant: Optional[Literal['gdn', 'gdn2', 'kda', 'dsa', 'gated_delta_net']] = (
         None
     )
     """Type of attention variant to use. Currently support gdn, gdn2 and dsa.
     gdn2 selects the GDN2 (Gated DeltaNet-2) variant of the gated delta net layer, with
     channel-wise decay, erase and write gates; it requires flash-linear-attention >= 0.5.1.
-    Both gdn and gdn2 also select the layer built for the hybrid layer pattern symbol 'G'.
+    gdn and gdn2 select the hybrid layer pattern symbol 'G'; kda selects symbol 'K'.
     'gated_delta_net' is a deprecated alias of 'gdn': it is normalized to 'gdn' in
     __post_init__ and emits a DeprecationWarning."""
 
@@ -403,6 +403,12 @@ class TransformerConfig(ModelParallelConfig):
 
     linear_num_value_heads: Optional[int] = 32
     """Number of value and gate heads for the gated delta net."""
+
+    kda_safe_gate: bool = False
+    """Whether the KDA kernel should use bounded gate values."""
+
+    kda_lower_bound: Optional[float] = None
+    """Optional lower bound for KDA's bounded gate values."""
 
     ####################
     # initialization
@@ -1640,6 +1646,15 @@ class TransformerConfig(ModelParallelConfig):
                 f"{self.linear_num_value_heads=} must be a multiple of "
                 f"({self.tensor_model_parallel_size=} * {self.context_parallel_size=})."
             )
+
+            if self.experimental_attention_variant == "kda" and self.kda_safe_gate:
+                if self.kda_lower_bound is None:
+                    raise ValueError("KDA requires kda_lower_bound when kda_safe_gate=True.")
+                if not (-5.0 <= self.kda_lower_bound < 0.0):
+                    raise ValueError(
+                        "KDA requires kda_lower_bound to be in [-5, 0) "
+                        "when kda_safe_gate=True."
+                    )
         elif self.experimental_attention_variant == "dsa":
             _validate_dsa_kernel_backend_dependencies(self.dsa_kernel_backend)
             if self.add_bias_linear:
