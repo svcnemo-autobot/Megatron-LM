@@ -62,6 +62,8 @@ class SFTDataset(MegatronDataset):
         config: GPTDatasetConfig,
     ) -> None:
         super().__init__(dataset, dataset_path, indices, num_samples, index_split, config)
+        # Pre-calculate padding divisor to avoid redundant computation in get_item
+        self.padding_divisor = self._calculate_padding_divisor()
 
     @staticmethod
     def numel_low_level_dataset(low_level_dataset: LowLevelDataset) -> int:

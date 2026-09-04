@@ -128,9 +128,7 @@ def validate_yaml(args, defaults={}):
             if args.rank == 0:
                 print(
                     'WARNING: overriding default arguments for {key}:{v} \
-                       with {key}:{v2}'.format(
-                        key=key, v=defaults[key], v2=getattr(args, key)
-                    ),
+                       with {key}:{v2}'.format(key=key, v=defaults[key], v2=getattr(args, key)),
                     flush=True,
                 )
         else:
@@ -164,9 +162,22 @@ def validate_yaml(args, defaults={}):
 
     # num_layers_per_virtual_pipeline_stage is not insde model parallel for checkpointing
     if args.num_layers_per_virtual_pipeline_stage is not None:
-        assert args.model_parallel.pipeline_model_parallel_size > 2, (
-            'pipeline-model-parallel size should be greater than 2 with ' 'interleaved schedule'
-        )
+        # Mirror the two-branch check in arguments.py: with p2p communication
+        # overlap enabled a pipeline-parallel size of 2 is fine, but without it
+        # the size must exceed 2 to avoid issuing multiple p2p sends/recvs
+        # between the same pair of ranks in one communication batch.
+        if getattr(args.model_parallel, 'overlap_p2p_comm', False):
+            assert args.model_parallel.pipeline_model_parallel_size > 1, (
+                'When interleaved schedule is used, pipeline-model-parallel size '
+                'should be greater than 1'
+            )
+        else:
+            assert args.model_parallel.pipeline_model_parallel_size > 2, (
+                'When interleaved schedule is used and p2p communication overlap is '
+                'disabled, pipeline-model-parallel size should be greater than 2 to '
+                'avoid having multiple p2p sends and recvs between same 2 ranks per '
+                'communication batch'
+            )
         assert (
             args.language_model.num_layers
             % args.model_parallel.transformer_pipeline_model_parallel_size

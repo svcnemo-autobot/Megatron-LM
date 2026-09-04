@@ -445,7 +445,7 @@ def test_mla_rope_concat_matches_native(layout, num_heads, dtype):
 @pytest.mark.skipif(not is_torch_min_version("2.5.0"), reason="Requires PyTorch >= 2.5.0")
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 @pytest.mark.parametrize("input_format", ["sbhd", "thd"])
-class TestFusedApplyMLARope:
+class TestFusedMLARope:
     @pytest.mark.flaky_in_dev
     @pytest.mark.parametrize("rope_first", [False, True], ids=["nope-first", "rope-first"])
     def test_forward_backward_for_q(self, input_format, rope_first):

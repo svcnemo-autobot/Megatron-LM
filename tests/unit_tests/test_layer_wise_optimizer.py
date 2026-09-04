@@ -313,6 +313,7 @@ class TestLayerWiseOptimizer:
         model_kwargs=None,
         copy_from=None,
         overlap_param_gather=True,
+        optimizer_overlap_param_gather=None,
         grad_reduce_in_fp32=False,
         bucket_size=None,
         use_param_layout=False,
@@ -329,6 +330,8 @@ class TestLayerWiseOptimizer:
             model_kwargs: Optional kwargs for model initialization
             copy_from: Optional DDP model to copy weights from
             overlap_param_gather: If True, defer param all-gather to bucket infrastructure
+            optimizer_overlap_param_gather: Optional conflicting OptimizerConfig value used to
+                verify that the DDP config remains authoritative. Defaults to the DDP value.
             grad_reduce_in_fp32: If True, reduce grads in fp32 (regression test for dtype fix)
             bucket_size: Maximum number of parameters per bucket (None = single bucket)
             use_param_layout: If True, supply DDP a precomputed shard-aligned
@@ -380,6 +383,9 @@ class TestLayerWiseOptimizer:
         else:
             model.broadcast_params()
 
+        if optimizer_overlap_param_gather is None:
+            optimizer_overlap_param_gather = overlap_param_gather
+
         optimizer_config = OptimizerConfig(
             optimizer='muon',
             lr=0.01,
@@ -387,7 +393,7 @@ class TestLayerWiseOptimizer:
             bf16=True,
             use_distributed_optimizer=False,
             clip_grad=clip_grad,
-            overlap_param_gather=overlap_param_gather,
+            overlap_param_gather=optimizer_overlap_param_gather,
             muon_tp_mode="duplicated",
             use_layer_wise_distributed_optimizer=True,
         )
@@ -420,6 +426,18 @@ class TestLayerWiseOptimizer:
         # Verify basic properties
         assert optimizer is not None, "Optimizer should not be None"
         assert hasattr(optimizer, 'chained_optimizers'), "Should be a ChainedOptimizer"
+        layer_wise_optimizer = (
+            optimizer
+            if isinstance(optimizer, LayerWiseDistributedOptimizer)
+            else next(
+                sub_optimizer
+                for sub_optimizer in optimizer.chained_optimizers
+                if isinstance(sub_optimizer, LayerWiseDistributedOptimizer)
+            )
+        )
+        assert layer_wise_optimizer.grad_stats_parallel_group is pg_collection.intra_dist_opt
+        for sub_optimizer in layer_wise_optimizer.chained_optimizers:
+            assert sub_optimizer.grad_stats_parallel_group is pg_collection.intra_dist_opt
 
         reference_model = self.create_reference_model(model)
 
@@ -714,6 +732,29 @@ class TestLayerWiseOptimizer:
 
         assert update_successful, "Optimizer step should be successful"
 
+    def test_bf16_wrapper_uses_preserved_high_precision_initializer(self):
+        """FP32 masters must not be initialized from an already-quantized model weight."""
+        model_param = torch.nn.Parameter(
+            torch.full((2, 2), -1.0, dtype=torch.bfloat16, device='cuda')
+        )
+        preserved_init = torch.full((2, 2), 1.25, dtype=torch.bfloat16)
+        init_state = {'value': preserved_init}
+        model_param.get_high_precision_init_val = lambda: init_state['value']
+        model_param.clear_high_precision_init_val = lambda: init_state.update(value=None)
+
+        base_optimizer = torch.optim.SGD([model_param], lr=0.1)
+        wrapped_optimizer = Float16OptimizerWithFloat16Params(
+            base_optimizer,
+            OptimizerConfig(optimizer='sgd', lr=0.1, bf16=True),
+            None,
+            lambda opt, config: None,
+        )
+
+        main_param = wrapped_optimizer.fp32_from_float16_groups[0][0]
+        torch.testing.assert_close(main_param, preserved_init.cuda().float(), rtol=0, atol=0)
+        assert init_state['value'] is None
+        assert model_param.main_param is main_param
+
     def test_bf16_error(self):
         """Test LayerWiseDistributedOptimizer raises error when receiving pre-wrapped Float16 optimizer."""
         model = SimpleModel().bfloat16().cuda()
@@ -848,6 +889,33 @@ class TestLayerWiseOptimizer:
             torch.testing.assert_close(param.data, ref_param.data, rtol=0, atol=0)
 
     # ---- Overlap-param-gather tests ----
+
+    @pytest.mark.parametrize('use_param_layout', [False, True])
+    @pytest.mark.parametrize(
+        ('ddp_overlap_param_gather', 'optimizer_overlap_param_gather'),
+        [(False, True), (True, False)],
+    )
+    def test_overlap_param_gather_follows_ddp_config(
+        self, use_param_layout, ddp_overlap_param_gather, optimizer_overlap_param_gather
+    ):
+        """DDP's per-model overlap policy must override the global optimizer value."""
+        model, optimizer, _ = self.create_model_and_optimizer_with_overlap_param_gather(
+            overlap_param_gather=ddp_overlap_param_gather,
+            optimizer_overlap_param_gather=optimizer_overlap_param_gather,
+            use_param_layout=use_param_layout,
+        )
+
+        layer_wise_optimizer = next(
+            (
+                sub_optimizer
+                for sub_optimizer in getattr(optimizer, 'chained_optimizers', [optimizer])
+                if isinstance(sub_optimizer, LayerWiseDistributedOptimizer)
+            ),
+            optimizer,
+        )
+
+        assert layer_wise_optimizer.ddp_config is model.ddp_config
+        assert layer_wise_optimizer.overlap_param_gather == ddp_overlap_param_gather
 
     @pytest.mark.parametrize('use_param_layout', [False, True])
     def test_overlap_param_gather_basic(self, use_param_layout):

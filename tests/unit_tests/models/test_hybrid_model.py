@@ -29,6 +29,8 @@ from megatron.core.models.hybrid.hybrid_block import (
 from megatron.core.models.hybrid.hybrid_layer_specs import hybrid_stack_spec
 from megatron.core.models.hybrid.hybrid_model import HybridModel, _hybrid_logging_pg_kwargs
 from megatron.core.packed_seq_params import PackedSeqParams
+from megatron.core.ssm.mamba_layer_config import MambaLayerConfig
+from megatron.core.ssm.mlp_layer_config import MLPLayerConfig
 from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
 from megatron.core.transformer import MLATransformerConfig, TransformerConfig
 from megatron.core.transformer.enums import AttnBackend
@@ -277,6 +279,21 @@ class TestHybridModel:
         assert isinstance(self.model, HybridModel)
 
         assert self.model.max_sequence_length == 4
+
+        decoder = self.model.decoder
+        assert "layer_type_list" not in decoder.__dict__
+        assert decoder.layer_type_list == [Symbols.MAMBA, Symbols.ATTENTION, Symbols.MLP]
+        assert [type(config) for config in decoder.layer_config_list] == [
+            MambaLayerConfig,
+            AttentionLayerConfig,
+            MLPLayerConfig,
+        ]
+        assert len({id(config) for config in decoder.layer_config_list}) == 3
+        assert all(config is not self.model.config for config in decoder.layer_config_list)
+        assert all(
+            layer.config is layer_config
+            for layer, layer_config in zip(decoder.layers, decoder.layer_config_list, strict=True)
+        )
 
         num_weights = sum([p.numel() for p in self.model.parameters()])
         assert num_weights == 1774872

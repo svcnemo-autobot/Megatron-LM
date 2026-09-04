@@ -1,34 +1,12 @@
 # Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
-import asyncio
-import time
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Awaitable, Callable, Generic, NamedTuple, TypeVar
-
-import numpy as np
-from pydantic import BaseModel
-
-from megatron.core.inference.utils import asyncio_Queue, asyncio_QueueShutDown
-from megatron.core.utils import trace_async_exceptions
+from typing import Awaitable, Callable, Generic, NamedTuple, TypeVar
 
 from ..__init__ import Request, TypeLookupable
-from ..inference import (
-    InferenceInterface,
-    InferenceRequest,
-    InferenceResponse,
-    LLMChatMessage,
-    ReturnsRaw,
-)
-from ..rollout_granularity import (
-    RELEASE_STATE_BY_SUBMISSION,
-    ConsumptionGranularity,
-    ReleaseState,
-    SubmissionGranularity,
-)
-
-
-class AgentBaseModel(BaseModel, extra='allow'):
-    pass
+from ..inference import InferenceInterface, InferenceRequest, InferenceResponse, LLMChatMessage
+from ..rollout_granularity import ConsumptionGranularity, SubmissionGranularity
+from ..types import AgentBaseModel, GroupedRollouts, Rollout, RolloutGroup, Rollouts, TokenRollout
 
 
 class RolloutRequest(Request):
@@ -47,69 +25,27 @@ class GroupedRolloutRequest(Request):
     inference_interface: InferenceInterface
     validation: bool = False
     filter_groups_with_same_reward: bool = False
-    streaming: bool = False
     submission_granularity: SubmissionGranularity = "B"
     consumption_granularity: ConsumptionGranularity = "B"
 
 
-class Rollout(AgentBaseModel):
-    """Data for language-based Rollout."""
+class EpisodeResult(NamedTuple):
+    """All per-turn responses of one (possibly multi-turn) episode plus the final conversation."""
 
-    trajectory: list[str]
-    prompt_length: list[int] | None = None
-    reward: float = None
-    env_id: str = ''
-    problem_id: str | None = None
-    policy_epoch: list[list[tuple[int, int]]]
-    kv_cache_epoch: list[list[tuple[int, int]]]
-    num_evictions: list[int]
-
-
-class TokenRollout(AgentBaseModel):
-    """Tokenized representation of a language-based Rollout."""
-
-    trajectory: list[list[int]]
-    reward: list[float] | float
-    generation_mask: list[list[bool]] | None = None
-    logprobs: list[list[float]] | None = None
-    env_id: str = ''
-    problem_id: str | None = None
-    policy_epoch: list[list[tuple[int, int]]]
-    kv_cache_epoch: list[list[tuple[int, int]]]
-    num_evictions: list[int]
-
-
-Rollouts = list[TokenRollout | Rollout]
-
-
-class RolloutGroup(AgentBaseModel):
-    """A group of rollouts (e.g. multiple completions for one prompt) with batch metadata."""
-
-    rollouts: Rollouts
-    batch_id: int = 0
-    index_in_batch: int = 0
-
-    def __iter__(self):
-        return iter(self.rollouts)
-
-    def __len__(self):
-        return len(self.rollouts)
-
-    def __getitem__(self, idx):
-        return self.rollouts[idx]
-
-
-GroupedRollouts = list[RolloutGroup]
+    responses: list[InferenceResponse]
+    conversation: list[LLMChatMessage]
 
 
 class GroupRolloutParams(NamedTuple):
     """Returned by agent.prepare_group_rollout.
 
     One instance is created per group call and reused for all rollouts in that group.
+    Every rollout is an episode: run_episode generates it (one or more turns), while
+    build_rollout turns the completed episode into a Rollout.
     """
 
-    inference_request: InferenceRequest
-    build_rollout: Callable[[InferenceResponse], Awaitable[Rollout]]
+    run_episode: Callable[[], Awaitable[EpisodeResult]]
+    build_rollout: Callable[[EpisodeResult], Awaitable[Rollout]]
 
 
 class ContrastiveRollout(AgentBaseModel):
@@ -488,14 +424,7 @@ class _RolloutPipeline:
 
 
 class GroupedRolloutGenerator(Agent, ABC):
-    """An interface to return grouped Rollout objects to support algorithms like GRPO."""
-
-    parallel_generation_tasks: int = 512
-
-    def __init__(self, *, parallel_generation_tasks: int | None = None, **kwargs):
-        super().__init__(**kwargs)
-        if parallel_generation_tasks is not None:
-            self.parallel_generation_tasks = parallel_generation_tasks
+    """Agent contract consumed by RolloutPipeline to generate grouped rollouts (e.g. GRPO)."""
 
     @abstractmethod
     async def prepare_group_rollout(self, request: GroupedRolloutRequest) -> GroupRolloutParams:

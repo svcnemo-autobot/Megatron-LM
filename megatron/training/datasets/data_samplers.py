@@ -2,7 +2,6 @@
 
 """Dataloaders."""
 
-
 import random
 
 import numpy as np
@@ -20,6 +19,12 @@ def build_pretraining_data_loader(dataset, consumed_samples):
 
     if dataset is None:
         return None
+    # Empty split (e.g. valid/test when --eval-iters 0): return null loader
+    try:
+        if len(dataset) == 0:
+            return None
+    except TypeError:
+        pass
     args = get_args()
 
     if hasattr(dataset, 'split'):
@@ -48,15 +53,25 @@ def build_pretraining_data_loader(dataset, consumed_samples):
             data_parallel_size=mpu.get_data_parallel_world_size(),
         )
     elif args.dataloader_type == 'single':
-        # Packing schedulers consume one microbatch at a time and form
-        # global/DCP batches themselves.
-        batch_sampler = MegatronPretrainingSampler(
-            total_samples=len(dataset),
-            consumed_samples=consumed_samples,
-            micro_batch_size=micro_batch_size,
-            data_parallel_rank=mpu.get_data_parallel_rank(),
-            data_parallel_size=mpu.get_data_parallel_world_size(),
-        )
+        if args.hybrid_context_parallel and args.sequence_packing_scheduler is None:
+            batch_sampler = HybridCPMegatronPretrainingSampler(
+                total_samples=len(dataset),
+                consumed_samples=consumed_samples,
+                micro_batch_size=micro_batch_size,
+                global_batch_size=global_batch_size,
+                data_parallel_rank=mpu.get_data_parallel_rank(),
+                data_parallel_size=mpu.get_data_parallel_world_size(),
+            )
+        else:
+            # Megatron sampler. Packing schedulers consume one microbatch at a
+            # time and form packed global batches themselves.
+            batch_sampler = MegatronPretrainingSampler(
+                total_samples=len(dataset),
+                consumed_samples=consumed_samples,
+                micro_batch_size=micro_batch_size,
+                data_parallel_rank=mpu.get_data_parallel_rank(),
+                data_parallel_size=mpu.get_data_parallel_world_size(),
+            )
     elif args.dataloader_type == 'cyclic':
         batch_sampler = MegatronPretrainingRandomSampler(
             dataset,
@@ -90,16 +105,15 @@ def build_pretraining_data_loader(dataset, consumed_samples):
             DistributedSignalHandler(args.exit_signal).__enter__()
 
     maybe_worker_init_fn = worker_init_fn if args.num_workers > 0 else None
-    # Identity collate for VarlenDataset and packing-scheduler paths;
-    # they emit one variable-length dict per sample, not stack-able by
-    # the default collate. --varlen-sbhd-validation is excluded: it bypasses
-    # packing and emits fixed-length [seq_length] samples that the default
-    # collate stacks normally.
+    # Identity collate for VarlenDataset and packing-scheduler paths; they emit
+    # one variable-length dict per sample, not stack-able by the default
+    # collate. --varlen-sbhd-validation is excluded: it bypasses packing and
+    # emits fixed-length [seq_length] samples that the default collate stacks
+    # normally.
     if (
         (args.use_varlen_dataset and not args.varlen_sbhd_validation)
-        or args.dynamic_context_parallel
+        or args.hybrid_context_parallel
         or args.sequence_packing_scheduler is not None
-        or getattr(args, "use_vanilla_collate_fn", False)
     ):
         extra_kwargs = {"collate_fn": lambda x: x}
     else:

@@ -3,6 +3,8 @@
 
 # pylint: disable=missing-function-docstring, missing-class-docstring
 
+from typing import Optional
+
 import torch
 import torch.nn.functional as F
 
@@ -322,6 +324,8 @@ def bias_swiglu_impl(input, bias, fp8_input_store=False, cpu_offload_input=False
     """
     ori_shape = input.shape
     assert len(ori_shape) in [2, 3]
+    assert gate_clamp_scale is not None or linear_clamp_scale is None
+    assert gate_clamp_scale is None or clamp_value is None
     input = input.view(-1, ori_shape[-1])
     if bias is not None:
         output = BiasSwiGLUFunction.apply(
@@ -336,9 +340,20 @@ def bias_swiglu_impl(input, bias, fp8_input_store=False, cpu_offload_input=False
 def weighted_bias_swiglu_impl(input, bias, weights, fp8_input_store=False, clamp_value=None):
     """
     Token-wise-weighted bias swiglu fusion.
+
+    Args:
+        clamp_value (float, optional): Maximum gate value and absolute linear value. When None,
+            preserve the legacy unclamped SwiGLU behavior. Mutually exclusive with
+            ``gate_clamp_scale``.
+        gate_clamp_scale (Optional[float]): If set, compute SiTU-GLU instead of SwiGLU: the gate
+            becomes ``s_g * tanh(x / s_g) * sigmoid(x)``, bounded by ``s_g``.
+        linear_clamp_scale (Optional[float]): If set, also soft-clamp the linear half. Requires
+            ``gate_clamp_scale``.
     """
     ori_shape = input.shape
     assert len(ori_shape) in [2, 3]
+    assert gate_clamp_scale is not None or linear_clamp_scale is None
+    assert gate_clamp_scale is None or clamp_value is None
     input = input.view(-1, ori_shape[-1])
     if bias is not None:
         raise NotImplementedError("Bias is not supported for weighted swiglu fusion")

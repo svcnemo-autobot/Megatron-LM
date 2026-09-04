@@ -7,6 +7,8 @@ import torch
 
 from .utils import is_torch_min_version
 
+VALID_SHARDING_STRATEGIES = ("no_shard", "optim", "optim_grads", "optim_grads_params")
+
 
 @dataclass
 class DistributedDataParallelConfig:
@@ -43,6 +45,16 @@ class DistributedDataParallelConfig:
     data_parallel_sharding_strategy: str = 'no_shard'
     """Sharding strategy for FSDP. Valid values are 'no_shard', 'optim',
       'optim_grads', 'optim_grads_params'."""
+
+    expert_data_parallel_sharding_strategy: Optional[str] = None
+    """Sharding strategy applied to expert (MoE) parameters on DP-Shard. Valid values are
+      'no_shard', 'optim', 'optim_grads', 'optim_grads_params'. When set,
+      `data_parallel_sharding_strategy` only applies to non-expert parameters, which allows
+      trading DP-Shard communication against memory separately for the two parameter classes
+      (e.g. 'optim' on non-experts and 'optim_grads_params' on experts). Expert parameters are
+      already sharded over a narrower DP group than non-expert parameters when expert
+      parallelism is enabled, so the two classes have very different traffic-per-byte.
+      When None, `data_parallel_sharding_strategy` applies to all parameters."""
 
     gradient_reduce_div_fusion: bool = True
     """If true, perform gradient reduce and division fusion."""
@@ -202,6 +214,13 @@ class DistributedDataParallelConfig:
     parity between FSDP units, when using fsdp_double_buffer=True. Enables NCCL
     user buffer registration and CUDA graph replay for models with asymmetrical
     FSDP units, such as models with hybrid architectures (e.g. Mamba and MoE).
+    """
+
+    hfsdp_param_gather_overlap: bool = False
+    """If true, pipeline HFSDP parameter gathers across the DP-Outer and DP-Inner
+    communication domains. DP-Inner retains its size-based prefetch policy, while
+    DP-Outer is prefetched one additional FSDP unit beyond the DP-Inner frontier.
+    Only effective with ``outer_dp_sharding_strategy='optim'``.
     """
 
     def __post_init__(self):

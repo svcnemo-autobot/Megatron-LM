@@ -1,6 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 from copy import deepcopy
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -21,13 +22,17 @@ from megatron.core.models.hybrid.hybrid_model import (
 from megatron.core.process_groups_config import ProcessGroupCollection
 from megatron.core.ssm.gated_delta_net import HAVE_FLA_KDA, GatedDeltaNet, KimiDeltaAttention
 from megatron.core.ssm.mamba_layer import MambaLayer
+from megatron.core.ssm.mamba_layer_config import MambaLayerConfig
+from megatron.core.ssm.mlp_layer_config import MLPLayerConfig
 from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
 from megatron.core.transformer import TransformerConfig
 from megatron.core.transformer.attention import SelfAttention
+from megatron.core.transformer.attention_layer_config import AttentionLayerConfig
 from megatron.core.transformer.experimental_attention_variant.absorbed_mla import (
     AbsorbedMLASelfAttention,
 )
 from megatron.core.transformer.experimental_attention_variant.dsa import DSAttention
+from megatron.core.transformer.mla_layer_config import MLALayerConfig
 from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.multi_latent_attention import MLASelfAttention
 from megatron.core.transformer.transformer_config import MLATransformerConfig
@@ -107,21 +112,21 @@ class TestHybridBlock:
         )
 
     def get_hybrid_block(self, layer_pattern, **config_kwargs):
-        layer_type_list = validate_segment_layers(layer_pattern)
         transformer_config = TransformerConfig(
             hidden_size=256,  # The Mamba layer places several constraints on this
             # Need to specify num_attention_heads and num_layers or TransformerConfig
             # will generate errors.
-            num_layers=len(layer_type_list),
+            num_layers=len(layer_pattern),
             num_attention_heads=4,
             use_cpu_initialization=True,
             **config_kwargs,
         )
+        layer_config_list = validate_segment_layers(layer_pattern, transformer_config)
         modules = hybrid_stack_spec.submodules
         return HybridStack(
             transformer_config,
             modules,
-            layer_type_list=layer_type_list,
+            layer_config_list=layer_config_list,
             pp_layer_offset=0,
             pg_collection=self.get_pg_collection(),
         )
@@ -137,7 +142,7 @@ class TestHybridBlock:
             hidden_size=256,  # The Mamba layer places several constraints on this
             # Need to specify num_attention_heads and num_layers or TransformerConfig
             # will generate errors.
-            num_layers=len(layer_type_list),
+            num_layers=len(layer_pattern),
             num_attention_heads=16,
             use_cpu_initialization=True,
             bf16=True,
@@ -156,11 +161,41 @@ class TestHybridBlock:
             add_bias_linear=False,
             **mhc_kwargs,
         )
+        layer_config_list = validate_segment_layers(layer_pattern, transformer_config)
         modules = hybrid_stack_spec.submodules
         return HybridStack(
             transformer_config,
             modules,
-            layer_type_list=layer_type_list,
+            layer_config_list=layer_config_list,
+            pp_layer_offset=0,
+            pg_collection=self.get_pg_collection(),
+        )
+
+    def get_mla_hybrid_block(self, layer_pattern):
+        transformer_config = MLATransformerConfig(
+            hidden_size=256,  # The Mamba layer places several constraints on this
+            # Need to specify num_attention_heads and num_layers or TransformerConfig
+            # will generate errors.
+            num_layers=len(layer_pattern),
+            num_attention_heads=16,
+            use_cpu_initialization=True,
+            bf16=True,
+            params_dtype=torch.bfloat16,
+            q_lora_rank=64,
+            kv_lora_rank=64,
+            qk_head_dim=64,
+            qk_pos_emb_head_dim=32,
+            v_head_dim=64,
+            rope_type='rope',
+            rotary_base=10000,
+            rotary_percent=1.0,
+        )
+        layer_config_list = validate_segment_layers(layer_pattern, transformer_config)
+        modules = hybrid_stack_spec.submodules
+        return HybridStack(
+            transformer_config,
+            modules,
+            layer_config_list=layer_config_list,
             pp_layer_offset=0,
             pg_collection=self.get_pg_collection(),
         )
@@ -471,6 +506,11 @@ class TestHybridBlock:
         assert isinstance(layers[1].self_attention, SelfAttention)
         assert isinstance(layers[2], TransformerLayer)
         assert isinstance(layers[2].mlp, MLP)
+        assert len({id(config) for config in block.layer_config_list}) == len(layer_pattern)
+        assert all(
+            layer.config is layer_config
+            for layer, layer_config in zip(block.layers, block.layer_config_list)
+        )
 
     def test_hyper_connection_layer_wrappers(self):
         """mHC wraps each hybrid layer while preserving the layer type underneath."""
@@ -785,19 +825,19 @@ class TestHybridBlock:
     def test_gdn_gpu_forward(self):
         """Test GPU forward pass with GDN, attention, and Mamba layers."""
         layer_pattern = Symbols.GDN + Symbols.ATTENTION + Symbols.MAMBA
-        layer_type_list = validate_segment_layers(layer_pattern)
         transformer_config = TransformerConfig(
             hidden_size=256,
-            num_layers=len(layer_type_list),
+            num_layers=len(layer_pattern),
             num_attention_heads=4,
             use_cpu_initialization=True,
             activation_func=torch.nn.functional.silu,
         )
+        layer_config_list = validate_segment_layers(layer_pattern, transformer_config)
         modules = hybrid_stack_spec.submodules
         block = HybridStack(
             transformer_config,
             modules,
-            layer_type_list=layer_type_list,
+            layer_config_list=layer_config_list,
             pp_layer_offset=0,
             pg_collection=self.get_pg_collection(),
         )
@@ -819,7 +859,7 @@ class TestHybridBlock:
     def test_dsa_layer_types(self):
         """D symbol creates a TransformerLayer with absorbed MLA and DSA core attention."""
         layer_pattern = Symbols.MAMBA + Symbols.DS_ATTENTION + Symbols.MAMBA
-        block = self.get_dsa_mamba_block(layer_pattern)
+        block = self.get_dsa_hybrid_block(layer_pattern)
         layers = block.layers
         assert isinstance(layers[0], MambaLayer)
         assert isinstance(layers[1], TransformerLayer)

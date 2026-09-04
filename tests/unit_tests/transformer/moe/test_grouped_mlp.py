@@ -92,6 +92,7 @@ def test_make_fused_ops_reuses_grouped_linear_weights_on_meta_device(monkeypatch
             single_grouped_weight,
             single_grouped_bias=False,
             delay_wgrad_compute=False,
+            scale_bias=False,
         ):
             super().__init__()
             self.num_gemms = num_gemms
@@ -104,6 +105,7 @@ def test_make_fused_ops_reuses_grouped_linear_weights_on_meta_device(monkeypatch
             self.single_grouped_weight = single_grouped_weight
             self.single_grouped_bias = single_grouped_bias
             self.delay_wgrad_compute = delay_wgrad_compute
+            self.scale_bias = scale_bias
 
         def need_backward_dw(self):
             return False
@@ -177,18 +179,21 @@ def test_make_fused_ops_reuses_grouped_linear_weights_on_meta_device(monkeypatch
     assert ops[0].weight1 is module.linear_fc1.weight1
     assert ops[0].bias0 is module.linear_fc1.bias0
     assert ops[0].bias1 is module.linear_fc1.bias1
+    assert ops[0].scale_bias is False
     assert ops[1].glu_interleave_size == 16
     assert ops[2].device == "meta"
     assert ops[2].weight is module.linear_fc2.weight
+    assert ops[2].scale_bias is False
     assert hasattr(ops, "forward_pre_hook")
     assert hasattr(ops, "forward_post_hook")
 
 
-def test_fused_forward_caches_ops_and_forwards_expected_arguments():
+@pytest.mark.parametrize("fc2_bias", [False, True], ids=["no_fc2_bias", "fc2_bias"])
+def test_fused_forward_caches_ops_and_forwards_expected_arguments(fc2_bias):
     class FakeFusedOps:
-        def __call__(self, hidden_states, fc1_tokens, probs, fc2_tokens):
-            self.args = (hidden_states, fc1_tokens, probs, fc2_tokens)
-            return hidden_states + 1
+        def __call__(self, *args):
+            self.args = args
+            return args[0] + 1
 
     module = TEGroupedMLP.__new__(TEGroupedMLP)
     # `_fused_forward` calls `skip_routed_expert_padding(config)` (added by PR 4071), which
@@ -208,6 +213,7 @@ def test_fused_forward_caches_ops_and_forwards_expected_arguments():
     module.quantization_padding = lambda tensor, token_counts: (tensor, token_counts)
     module.quantization_unpadding = lambda tensor, token_counts: tensor
     module._fused_ops = None
+    module.linear_fc2 = SimpleNamespace(use_bias=fc2_bias)
     fused_ops = FakeFusedOps()
     module._make_fused_ops = lambda: fused_ops
     hidden_states = torch.zeros(2, 4)
@@ -349,6 +355,7 @@ def test_make_fused_ops_handles_single_grouped_weight_for_fc1(monkeypatch):
             single_grouped_weight,
             single_grouped_bias=False,
             delay_wgrad_compute=False,
+            scale_bias=False,
         ):
             super().__init__()
             self.num_gemms = num_gemms
@@ -361,6 +368,7 @@ def test_make_fused_ops_handles_single_grouped_weight_for_fc1(monkeypatch):
             self.single_grouped_weight = single_grouped_weight
             self.single_grouped_bias = single_grouped_bias
             self.delay_wgrad_compute = delay_wgrad_compute
+            self.scale_bias = scale_bias
 
         def need_backward_dw(self):
             return False
@@ -442,6 +450,7 @@ def test_make_fused_ops_handles_single_grouped_weight_for_fc1(monkeypatch):
     assert ops[2].weight1 is module.linear_fc2.weight1
     assert ops[2].bias0 is module.linear_fc2.bias0
     assert ops[2].bias1 is module.linear_fc2.bias1
+    assert ops[2].scale_bias is True
 
 
 def _make_fake_te_namespace():
@@ -461,6 +470,7 @@ def _make_fake_te_namespace():
             single_grouped_weight,
             single_grouped_bias=False,
             delay_wgrad_compute=False,
+            scale_bias=False,
         ):
             super().__init__()
             self.num_gemms = num_gemms
@@ -473,6 +483,7 @@ def _make_fake_te_namespace():
             self.single_grouped_weight = single_grouped_weight
             self.single_grouped_bias = single_grouped_bias
             self.delay_wgrad_compute = delay_wgrad_compute
+            self.scale_bias = scale_bias
 
         def need_backward_dw(self):
             return False
@@ -529,8 +540,15 @@ def _make_fake_te_namespace():
     )
 
 
-def test_make_fused_ops_uses_clamped_qgeglu_for_quick_gelu(monkeypatch):
-    """quick_gelu + clamp value → ScaledClampedQGeGLU(limit=clamp)."""
+@pytest.mark.parametrize(
+    ("activation_func", "expected_alpha", "expected_offset"),
+    [(quick_gelu, 1.702, 1.0), (F.silu, 1.0, 0.0)],
+    ids=("quick-geglu", "clamped-swiglu"),
+)
+def test_make_fused_ops_uses_clamped_qgeglu(
+    monkeypatch, activation_func, expected_alpha, expected_offset
+):
+    """Clamped quick GeGLU and SwiGLU use the appropriate TE parameters."""
     fake_te, FakeGroupedLinear = _make_fake_te_namespace()
     monkeypatch.setattr(experts_module, "te", fake_te)
 
@@ -540,10 +558,10 @@ def test_make_fused_ops_uses_clamped_qgeglu_for_quick_gelu(monkeypatch):
         moe_mlp_glu_interleave_size=4,
         delay_wgrad_compute=False,
         activation_func_clamp_value=7.0,
-        activation_func=quick_gelu,
+        activation_func=activation_func,
         gated_linear_unit=True,
     )
-    module.activation_func = quick_gelu
+    module.activation_func = activation_func
     module.activation_recompute = True
     common = dict(
         device="cuda",
@@ -565,6 +583,8 @@ def test_make_fused_ops_uses_clamped_qgeglu_for_quick_gelu(monkeypatch):
     assert activation.glu_interleave_size == 4
     assert activation.activation_recompute_in_mlp is True
     assert activation.limit == 7.0
+    assert activation.alpha == expected_alpha
+    assert activation.glu_linear_offset == expected_offset
 
 
 def test_make_fused_ops_uses_scaled_srelu_for_weighted_squared_relu(monkeypatch):

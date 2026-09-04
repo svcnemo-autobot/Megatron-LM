@@ -11,6 +11,8 @@ from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_layer_local_submodules,
     get_gpt_layer_with_transformer_engine_submodules,
 )
+from megatron.core.process_groups_config import ProcessGroupCollection
+from megatron.core.transformer.moe import moe_layer as moe_layer_module
 from megatron.core.transformer.moe.moe_layer import MoELayer, MoESubmodules
 from megatron.core.transformer.spec_utils import get_submodules
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -125,6 +127,8 @@ class TestLatentMoELayer:
         moe_layer = MoELayer(self.transformer_config, submodules)
         moe_layer.cuda()
         config = moe_layer.config
+
+        assert not hasattr(moe_layer, "fc2_norm")
 
         assert (
             moe_layer.shared_experts.linear_fc1.weight.shape[1] == config.hidden_size

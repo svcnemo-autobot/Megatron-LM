@@ -1,6 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 import gc
+import logging
 import os
 from contextlib import nullcontext
 from typing import Dict, List, Optional, Tuple
@@ -8,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import pytest
 import torch
 
+from megatron.core._rank_utils import safe_get_rank
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
 from megatron.core.models.gpt.gpt_model import GPTModel
 from megatron.core.pipeline_parallel.fine_grained_activation_offload import ChunkOffloadHandler
@@ -42,6 +44,42 @@ def _make_chunk_handler_for_offload_checker(min_offloaded_tensor_size: int = 1):
     handler = ChunkOffloadHandler.__new__(ChunkOffloadHandler)
     handler.min_offloaded_tensor_size = min_offloaded_tensor_size
     return handler
+
+
+def test_offload_summary_uses_explicit_process_group(monkeypatch):
+    from megatron.core.pipeline_parallel import fine_grained_activation_offload as off_module
+
+    process_group = object()
+    monkeypatch.setattr(torch.distributed, "is_initialized", lambda: True)
+    monkeypatch.setattr(
+        torch.distributed,
+        "get_rank",
+        lambda *, group=None: 0 if group is process_group else pytest.fail("wrong process group"),
+    )
+    monkeypatch.setattr(
+        torch.distributed,
+        "get_world_size",
+        lambda *, group=None: 1 if group is process_group else pytest.fail("wrong process group"),
+    )
+
+    def all_gather_object(output, value, *, group=None):
+        assert group is process_group
+        output[0] = value
+
+    def barrier(*, group=None):
+        assert group is process_group
+
+    monkeypatch.setattr(torch.distributed, "all_gather_object", all_gather_object)
+    monkeypatch.setattr(torch.distributed, "barrier", barrier)
+    warning_messages = []
+    monkeypatch.setattr(off_module.logger, "warning", warning_messages.append)
+
+    off_module.print_offload_summary_table(
+        {"decoder": 1024}, {"decoder": (1, 1024)}, process_group=process_group
+    )
+
+    assert len(warning_messages) == 1
+    assert "same tensor storage" in warning_messages[0]
 
 
 def test_chunk_offload_handler_skips_non_offloadable_tensor_types():

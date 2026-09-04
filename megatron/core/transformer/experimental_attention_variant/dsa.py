@@ -943,11 +943,12 @@ def bwd_fused_indexer_loss_naive(
             dtype=grad_kl_per_element.dtype
         )
 
-    # For KL(target || softmax(logits)), the exact logit gradient is predict - target.
-    # Computing it through -target / (predict + eps) incorrectly suppresses gradients when
-    # valid predicted probabilities are smaller than eps.
+    # For KL(target || softmax(logits)), the exact logit gradient is
+    # predict * target.sum(-1) - target. Positive teacher rows are L1-normalized,
+    # while a fully masked zero-mass row must have zero gradient.
+    attention_target_mass = attention_scores_normalized.sum(dim=-1, keepdim=True)
     grad_index_scores_logits = (
-        index_scores_softmax - attention_scores_normalized
+        index_scores_softmax * attention_target_mass - attention_scores_normalized
     ) * grad_kl_per_element
     del index_scores_softmax, attention_scores_normalized
 
