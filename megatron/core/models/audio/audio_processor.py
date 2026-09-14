@@ -244,6 +244,7 @@ class NemoAudioProcessor:
         self.feature_config = feature_config or NemoAudioFeatureConfig()
         self._preprocessor = AudioToMelSpectrogramPreprocessor(
             **self.feature_config.to_nemo_kwargs()
+        # DevSkim: ignore DS189424 - PyTorch module mode, not code execution.
         ).eval()
         # The vendored standalone AudioToMelSpectrogramPreprocessor exposes
         # win/hop lengths directly (no ``featurizer`` indirection).

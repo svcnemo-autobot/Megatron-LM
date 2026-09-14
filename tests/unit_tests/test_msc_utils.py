@@ -35,6 +35,6 @@ def test_path_isdir_delegates_to_os_path_isdir(monkeypatch):
     # monkeypatch the os.path.isdir used by the fallback path
     monkeypatch.setattr(os.path, 'isdir', fake_isdir)
 
-    result = maybe_msc.path_isdir('/tmp/some-path')
+    result = maybe_msc.path_isdir('/tmp/some-path')  # nosec B108 - fixed test-only path
     assert result is True
-    assert called['p'] == '/tmp/some-path'
+    assert called['p'] == '/tmp/some-path'  # nosec B108 - fixed test-only path

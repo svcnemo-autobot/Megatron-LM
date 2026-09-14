@@ -34,6 +34,7 @@ async def test_run_batch_request_count_override(monkeypatch):
     inputs, outputs, latencies, _ = await static_benchmark._run_batch(
         mock.sentinel.session,
         args,
+        # DevSkim: ignore DS162092 - localhost is an isolated test endpoint.
         "http://localhost:5000/v1/completions",
         ["prompt 0", "prompt 1"],
         iter_start_index=1,
@@ -59,6 +60,7 @@ async def test_run_batch_request_count_override(monkeypatch):
     await static_benchmark._run_batch(
         mock.sentinel.session,
         args,
+        # DevSkim: ignore DS162092 - localhost is an isolated test endpoint.
         "http://localhost:5000/v1/completions",
         ["prompt"],
         iter_start_index=0,
@@ -88,6 +90,7 @@ async def test_main_widens_only_warmup_batches_and_preserves_timed_prompts(monke
         static_benchmark.aiohttp, "ClientSession", mock.Mock(return_value=FakeClientSession())
     )
     args = argparse.Namespace(
+        # DevSkim: ignore DS162092 - localhost is an isolated test endpoint.
         server_url="http://localhost:5000/v1",
         model="gpt_583m",
         batch_size=1,
