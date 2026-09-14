@@ -34,7 +34,7 @@ async def test_run_batch_request_count_override(monkeypatch):
     inputs, outputs, latencies, _ = await static_benchmark._run_batch(
         mock.sentinel.session,
         args,
-        "http://localhost:5000/v1/completions",
+        "http://127.0.0.1:5000/v1/completions",
         ["prompt 0", "prompt 1"],
         iter_start_index=1,
         request_count=8,
@@ -59,7 +59,7 @@ async def test_run_batch_request_count_override(monkeypatch):
     await static_benchmark._run_batch(
         mock.sentinel.session,
         args,
-        "http://localhost:5000/v1/completions",
+        "http://127.0.0.1:5000/v1/completions",
         ["prompt"],
         iter_start_index=0,
     )
@@ -88,7 +88,7 @@ async def test_main_widens_only_warmup_batches_and_preserves_timed_prompts(monke
         static_benchmark.aiohttp, "ClientSession", mock.Mock(return_value=FakeClientSession())
     )
     args = argparse.Namespace(
-        server_url="http://localhost:5000/v1",
+        server_url="http://127.0.0.1:5000/v1",
         model="gpt_583m",
         batch_size=1,
         data_parallel_size=8,
