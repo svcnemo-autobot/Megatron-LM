@@ -4,7 +4,10 @@ ENV UV_PYTHON_DOWNLOADS=never \
     UV_NATIVE_TLS=1 \
     UV_NO_GITHUB_FAST_PATH=1
 
-RUN pip install --no-cache-dir uv
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv
 
 WORKDIR /repo
 COPY . .
@@ -14,7 +17,6 @@ RUN sed -i 's/"wandb"/"wandb==0.29.0"/g' pyproject.toml \
     && uv lock \
     && cp uv.lock /uv.lock.new \
     && (diff -u /uv.lock.orig /uv.lock.new > /uv.lock.diff || true) \
-    && diff -u /dev/null /dev/null \
     && cp pyproject.toml /pyproject.toml.new \
     && echo "=== SHA256 of regenerated uv.lock ===" \
     && sha256sum /uv.lock.new \
