@@ -7,14 +7,17 @@ ENV UV_PYTHON_DOWNLOADS=never \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir uv setuptools wheel packaging torch --index-url https://pypi.org/simple
+    && pip install --no-cache-dir uv
 
 WORKDIR /repo
 COPY . .
 
+# mamba-ssm's setup.py requires CUDA/NVCC (fails on 'bare_metal_version'); supply static
+# metadata mirroring the existing lock entry so uv need not run its build backend.
 RUN sed -i 's/"wandb"/"wandb==0.29.0"/g' pyproject.toml \
     && cp uv.lock /uv.lock.orig \
-    && UV_NO_BUILD_ISOLATION_PACKAGE="mamba-ssm transformer-engine transformer-engine-torch flash-mla fast-hadamard-transform causal-conv1d" uv lock \
+    && printf '\n[[tool.uv.dependency-metadata]]\nname = "mamba-ssm"\nversion = "2.3.2.post1"\nrequires-dist = ["apache-tvm-ffi", "einops", "ninja", "packaging", "quack-kernels", "setuptools", "tilelang", "torch; sys_platform == \\x27never\\x27", "transformers", "triton; sys_platform == \\x27never\\x27"]\n' >> pyproject.toml \
+    && uv lock \
     && cp uv.lock /uv.lock.new \
     && (diff -u /uv.lock.orig /uv.lock.new > /uv.lock.diff || true) \
     && cp pyproject.toml /pyproject.toml.new \
