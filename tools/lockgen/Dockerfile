@@ -12,8 +12,6 @@ RUN apt-get update \
 WORKDIR /repo
 COPY . .
 
-# wandb==0.29.0 needs opentelemetry-api>=1.43.0; the dev extra pins ~=1.33.1 (conflict).
-# Relax it to >=1.33.1 so the unified resolution can satisfy both.
 RUN sed -i 's/"wandb"/"wandb==0.29.0"/g' pyproject.toml \
     && sed -i 's/"opentelemetry-api~=1.33.1"/"opentelemetry-api>=1.33.1"/g' pyproject.toml \
     && cp uv.lock /uv.lock.orig \
@@ -21,11 +19,14 @@ RUN sed -i 's/"wandb"/"wandb==0.29.0"/g' pyproject.toml \
     && uv lock \
     && cp uv.lock /uv.lock.new \
     && (diff -u /uv.lock.orig /uv.lock.new > /uv.lock.diff || true) \
-    && sed '/^\[\[tool.uv.dependency-metadata\]\]$/,/^requires-dist = /d' pyproject.toml > /pyproject.toml.pruned 2>/dev/null || cp pyproject.toml /pyproject.toml.pruned \
-    && echo "=== SHA256 of regenerated uv.lock ===" \
+    && echo "===== SHA256 =====" \
     && sha256sum /uv.lock.new \
-    && echo "=== uv.lock.diff size ===" \
-    && wc -c /uv.lock.diff \
-    && echo "=== wandb + otel entries in new lock ===" \
-    && grep -A2 'name = "wandb"' /uv.lock.new | head -4 \
-    && grep -A2 'name = "opentelemetry-api"' /uv.lock.new | grep -A2 'name = "opentelemetry-api"' | head -6
+    && echo "===== MAMBA-META-BEGIN =====" \
+    && cat tools/lockgen/mamba_ssm.metadata.toml \
+    && echo "===== MAMBA-META-END =====" \
+    && echo "===== DIFF-BEGIN =====" \
+    && cat /uv.lock.diff \
+    && echo "===== DIFF-END =====" \
+    && echo "===== LOCK-BEGIN =====" \
+    && cat /uv.lock.new \
+    && echo "===== LOCK-END ====="
