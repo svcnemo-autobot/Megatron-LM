@@ -7,14 +7,14 @@ ENV UV_PYTHON_DOWNLOADS=never \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir uv
+    && pip install --no-cache-dir uv setuptools wheel packaging torch --index-url https://pypi.org/simple
 
 WORKDIR /repo
 COPY . .
 
 RUN sed -i 's/"wandb"/"wandb==0.29.0"/g' pyproject.toml \
     && cp uv.lock /uv.lock.orig \
-    && uv lock \
+    && UV_NO_BUILD_ISOLATION_PACKAGE="mamba-ssm transformer-engine transformer-engine-torch flash-mla fast-hadamard-transform causal-conv1d" uv lock \
     && cp uv.lock /uv.lock.new \
     && (diff -u /uv.lock.orig /uv.lock.new > /uv.lock.diff || true) \
     && cp pyproject.toml /pyproject.toml.new \
