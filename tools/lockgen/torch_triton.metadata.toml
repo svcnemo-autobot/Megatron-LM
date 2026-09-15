@@ -1,0 +1,7 @@
+[[tool.uv.dependency-metadata]]
+name = "torch"
+requires-dist = ["filelock", "fsspec", "jinja2", "networkx", "setuptools", "sympy", "triton; sys_platform == 'never'", "typing-extensions"]
+
+[[tool.uv.dependency-metadata]]
+name = "triton"
+requires-dist = []

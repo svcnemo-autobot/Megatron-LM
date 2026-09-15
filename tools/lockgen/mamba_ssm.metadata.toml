@@ -1,0 +1,4 @@
+[[tool.uv.dependency-metadata]]
+name = "mamba-ssm"
+version = "2.3.2.post1"
+requires-dist = ["apache-tvm-ffi", "einops", "ninja", "packaging", "quack-kernels", "setuptools", "tilelang", "torch; sys_platform == 'never'", "transformers", "triton; sys_platform == 'never'"]
