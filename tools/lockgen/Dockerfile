@@ -1,0 +1,24 @@
+FROM python:3.12-slim
+
+ENV UV_PYTHON_DOWNLOADS=never \
+    UV_NATIVE_TLS=1 \
+    UV_NO_GITHUB_FAST_PATH=1
+
+RUN pip install --no-cache-dir uv
+
+WORKDIR /repo
+COPY . .
+
+RUN sed -i 's/"wandb"/"wandb==0.29.0"/g' pyproject.toml \
+    && cp uv.lock /uv.lock.orig \
+    && uv lock \
+    && cp uv.lock /uv.lock.new \
+    && (diff -u /uv.lock.orig /uv.lock.new > /uv.lock.diff || true) \
+    && diff -u /dev/null /dev/null \
+    && cp pyproject.toml /pyproject.toml.new \
+    && echo "=== SHA256 of regenerated uv.lock ===" \
+    && sha256sum /uv.lock.new \
+    && echo "=== uv.lock.diff size ===" \
+    && wc -c /uv.lock.diff \
+    && echo "=== wandb entry in new lock ===" \
+    && grep -A3 'name = "wandb"' /uv.lock.new | head -8
