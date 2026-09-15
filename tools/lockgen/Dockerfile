@@ -12,11 +12,9 @@ RUN apt-get update \
 WORKDIR /repo
 COPY . .
 
-# mamba-ssm's setup.py requires CUDA/NVCC (fails on 'bare_metal_version'); supply static
-# metadata mirroring the existing lock entry so uv need not run its build backend.
 RUN sed -i 's/"wandb"/"wandb==0.29.0"/g' pyproject.toml \
     && cp uv.lock /uv.lock.orig \
-    && printf '\n[[tool.uv.dependency-metadata]]\nname = "mamba-ssm"\nversion = "2.3.2.post1"\nrequires-dist = ["apache-tvm-ffi", "einops", "ninja", "packaging", "quack-kernels", "setuptools", "tilelang", "torch; sys_platform == \\x27never\\x27", "transformers", "triton; sys_platform == \\x27never\\x27"]\n' >> pyproject.toml \
+    && cat tools/lockgen/mamba_ssm.metadata.toml >> pyproject.toml \
     && uv lock \
     && cp uv.lock /uv.lock.new \
     && (diff -u /uv.lock.orig /uv.lock.new > /uv.lock.diff || true) \
