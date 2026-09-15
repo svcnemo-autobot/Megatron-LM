@@ -12,21 +12,19 @@ RUN apt-get update \
 WORKDIR /repo
 COPY . .
 
+# Regenerate uv.lock with wandb pinned to 0.29.0. The dev extra's opentelemetry-api
+# ~=1.33.1 conflicts with wandb 0.29.0 (needs >=1.43.0), so relax it to >=1.33.1.
+# Override torch/triton metadata (mirroring the pyproject override-dependencies that keep
+# them off) so a wandb-triggered resolution does not reactivate the triton edge.
 RUN sed -i 's/"wandb"/"wandb==0.29.0"/g' pyproject.toml \
     && sed -i 's/"opentelemetry-api~=1.33.1"/"opentelemetry-api>=1.33.1"/g' pyproject.toml \
     && cp uv.lock /uv.lock.orig \
-    && cat tools/lockgen/mamba_ssm.metadata.toml >> pyproject.toml \
+    && printf '\n[[tool.uv.dependency-metadata]]\nname = "torch"\nrequires-dist = []\n\n[[tool.uv.dependency-metadata]]\nname = "triton"\nrequires-dist = []\n' >> pyproject.toml \
     && uv lock \
     && cp uv.lock /uv.lock.new \
     && (diff -u /uv.lock.orig /uv.lock.new > /uv.lock.diff || true) \
     && echo "===== SHA256 =====" \
     && sha256sum /uv.lock.new \
-    && echo "===== MAMBA-META-BEGIN =====" \
-    && cat tools/lockgen/mamba_ssm.metadata.toml \
-    && echo "===== MAMBA-META-END =====" \
     && echo "===== DIFF-BEGIN =====" \
     && cat /uv.lock.diff \
-    && echo "===== DIFF-END =====" \
-    && echo "===== LOCK-BEGIN =====" \
-    && cat /uv.lock.new \
-    && echo "===== LOCK-END ====="
+    && echo "===== DIFF-END ====="
