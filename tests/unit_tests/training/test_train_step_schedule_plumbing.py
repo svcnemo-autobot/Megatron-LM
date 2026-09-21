@@ -539,6 +539,7 @@ def test_config_container_forwards_layer_wise_optimizer_to_model_builder(
         mock.patch.object(training_mod.mpu, "model_parallel_is_initialized", return_value=False),
         mock.patch.object(training_mod, "initialize_dsa_metric_tracker") as initialize_tracker,
         mock.patch("megatron.training.utils.start_memory_history_recording"),
+        mock.patch("megatron.post_training.checkpointing.load_kd_teacher_checkpoint"),
     ):
         model, optimizer, scheduler = training_mod.setup_model_and_optimizer(
             ModelType.encoder_or_decoder, cfg_container=cfg, pg_collection=pg_collection
