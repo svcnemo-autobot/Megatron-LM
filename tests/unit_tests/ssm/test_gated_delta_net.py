@@ -391,7 +391,7 @@ class TestGatedDeltaNet:
         cu_seqlens = [i * sequence_length for i in range(micro_batch_size + 1)]
         # sbhd input shape: [sequence length, batch size, hidden size]
         sub_sequence_length = sequence_length // self.cp_size
-        hidden_states_sbhd = torch.rand(
+        hidden_states_sbhd = torch.rand(  # DevSkim: ignore DS148264
             (sub_sequence_length, micro_batch_size, self.gdn.config.hidden_size)
         )
         attention_mask_sbhd = None
@@ -432,7 +432,7 @@ class TestGatedDeltaNet:
 
         # sbhd input shape: [sequence length, batch size, hidden size]
         sub_sequence_length = sequence_length // self.cp_size
-        hidden_states_sbhd = torch.rand(
+        hidden_states_sbhd = torch.rand(  # DevSkim: ignore DS148264
             (sub_sequence_length, micro_batch_size, self.gdn.config.hidden_size),
             device=torch.cuda.current_device(),
             dtype=torch.bfloat16,
@@ -697,7 +697,9 @@ class TestFusedThdAllToAll:
         hidden = sum(split_sections)
         torch.manual_seed(42)
         local_t = (
-            torch.rand(T_local, 1, hidden, device=torch.cuda.current_device())
+            torch.rand(  # DevSkim: ignore DS148264
+                T_local, 1, hidden, device=torch.cuda.current_device()
+            )
             .bfloat16()
             .contiguous()
         )
@@ -725,7 +727,9 @@ class TestFusedThdAllToAll:
         h_local = hidden // self.cp_size
         torch.manual_seed(42)
         global_t = (
-            torch.rand(T_global, 1, h_local, device=torch.cuda.current_device())
+            torch.rand(  # DevSkim: ignore DS148264
+                T_global, 1, h_local, device=torch.cuda.current_device()
+            )
             .bfloat16()
             .contiguous()
         )
@@ -748,7 +752,9 @@ class TestFusedThdAllToAll:
         hidden = 32
         torch.manual_seed(7)
         local_t = (
-            torch.rand(T_local, 1, hidden, device=torch.cuda.current_device())
+            torch.rand(  # DevSkim: ignore DS148264
+                T_local, 1, hidden, device=torch.cuda.current_device()
+            )
             .bfloat16()
             .contiguous()
         )

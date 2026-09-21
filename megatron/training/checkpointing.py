@@ -1821,7 +1821,9 @@ def _load_base_checkpoint(
             # _load_base_checkpoint is called from load_args_from_checkpoint. torch.distributed is not initialized.
             # Load only metadata.
             state_dict = {'args': None, 'iteration': None}
-            torch.distributed.checkpoint.load(state_dict=state_dict, checkpoint_id=checkpoint_name)
+            torch.distributed.checkpoint.load(  # nosec B614
+                state_dict=state_dict, checkpoint_id=checkpoint_name
+            )
         else:
             # _load_base_checkpoint is called from load_checkpoint with a proper state dict.
             state_dict = sharded_state_dict
@@ -1835,7 +1837,9 @@ def _load_base_checkpoint(
         assert HAVE_MEGATRON_FSDP, 'Should not be called if Megatron-FSDP is not available.'
         if rank0:
             state_dict = {'args': None, 'iteration': None, 'checkpoint_version': None}
-            torch.distributed.checkpoint.load(state_dict=state_dict, checkpoint_id=checkpoint_name)
+            torch.distributed.checkpoint.load(  # nosec B614
+                state_dict=state_dict, checkpoint_id=checkpoint_name
+            )
             return state_dict, checkpoint_name, release, CheckpointType.FSDP_DTENSOR
 
         state_dict = sharded_state_dict

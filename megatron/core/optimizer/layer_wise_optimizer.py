@@ -1004,4 +1004,5 @@ class LayerWiseDistributedOptimizer(ChainedOptimizer):
 
     def load_state_dict_from_file(self, filename: str) -> None:
         """Load the parameter state of the optimizer. For torch format only."""
-        super().load_state_dict(torch.load(filename))
+        # Optimizer state files are trusted training checkpoints.
+        super().load_state_dict(torch.load(filename))  # nosec B614

@@ -25,7 +25,8 @@ def _validated_destination(destination: str | Path, member_names: Iterable[str])
 def safe_extract_zip(archive: zipfile.ZipFile, destination: str | Path) -> None:
     """Extract a ZIP archive after validating every member path."""
     destination = _validated_destination(destination, archive.namelist())
-    archive.extractall(destination)
+    # Member paths were validated above before extraction.
+    archive.extractall(destination)  # nosec B202
 
 
 def safe_extract_tar(archive: tarfile.TarFile, destination: str | Path) -> None:
@@ -37,4 +38,5 @@ def safe_extract_tar(archive: tarfile.TarFile, destination: str | Path) -> None:
             raise ValueError(f"Archive links are not allowed: {member.name!r}")
         if member.isdev():
             raise ValueError(f"Archive device entries are not allowed: {member.name!r}")
-    archive.extractall(destination, members=members)
+    # Every member path and type was validated above before extraction.
+    archive.extractall(destination, members=members)  # nosec B202
