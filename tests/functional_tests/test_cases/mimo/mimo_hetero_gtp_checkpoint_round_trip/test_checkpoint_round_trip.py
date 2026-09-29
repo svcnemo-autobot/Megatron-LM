@@ -51,6 +51,26 @@ _ROUND_TRIP_ARGS = {
 }
 
 
+def _run_with_failure_output(command, **kwargs) -> subprocess.CompletedProcess:
+    """Publish complete child diagnostics before scratch logs are removed."""
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, **kwargs)
+    except subprocess.TimeoutExpired as error:
+        _print_failure_output(error.stdout, error.stderr)
+        raise
+    if result.returncode != 0:
+        _print_failure_output(result.stdout, result.stderr)
+    return result
+
+
+def _print_failure_output(stdout, stderr) -> None:
+    for label, output in (("stdout", stdout), ("stderr", stderr)):
+        # TimeoutExpired may carry bytes even when subprocess.run uses text=True.
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        print(f"--- child {label} ---\n{output or ''}", flush=True)
+
+
 def _run_launcher(
     scratch: Path, name: str, *args: str, resave_after_load: bool = False
 ) -> subprocess.CompletedProcess:
@@ -83,9 +103,7 @@ def _run_launcher(
         *placement_args,
         *args,
     ]
-    return subprocess.run(
-        command, cwd=_REPO_ROOT, env=env, capture_output=True, text=True, timeout=1800
-    )
+    return _run_with_failure_output(command, cwd=_REPO_ROOT, env=env, timeout=1800)
 
 
 def _tail(result: subprocess.CompletedProcess) -> str:
@@ -231,7 +249,7 @@ def _load_padding_ranges(path: Path, entries) -> dict[str, list[tuple[int, int]]
                 )
     assert records, f"no optimizer padding was recorded in {path}"
 
-    ranges = {}
+    ranges: dict[str, set[tuple[int, int]]] = {}
     for key, global_numel, offset, numel in records:
         metadata = entries[key]
         assert isinstance(metadata, TensorStorageMetadata)
@@ -376,13 +394,13 @@ def _compare_checkpoints(source: Path, round_trip: Path, padding_manifest_dir: P
 
     totals = torch.tensor(stats, dtype=torch.int64)
     dist.all_reduce(totals)
-    all_errors = [None] * world_size
+    all_errors: list[list[str]] = [[] for _ in range(world_size)]
     dist.all_gather_object(all_errors, errors)
-    errors = [error for rank_errors in all_errors for error in rank_errors]
+    errors = [message for rank_errors in all_errors for message in rank_errors]
     if rank == 0:
         if errors:
-            for error in errors[:100]:
-                print(f"MISMATCH {error}")
+            for message in errors[:100]:
+                print(f"MISMATCH {message}")
             print(f"Checkpoint comparison failed: {len(errors)} mismatches")
         else:
             print(
@@ -414,7 +432,7 @@ def _run_comparator(
         "--padding-manifest-dir",
         str(padding_manifest_dir),
     ]
-    return subprocess.run(command, cwd=_REPO_ROOT, capture_output=True, text=True, timeout=1800)
+    return _run_with_failure_output(command, cwd=_REPO_ROOT, timeout=1800)
 
 
 @pytest.mark.skipif(not HAVE_GTP, reason="GTP requires a supported Transformer Engine version")
@@ -476,4 +494,8 @@ if __name__ == "__main__":
         parser.add_argument("--compare-checkpoints", nargs=2, type=Path, required=True)
         parser.add_argument("--padding-manifest-dir", type=Path, required=True)
         parsed = parser.parse_args()
-        _compare_checkpoints(*parsed.compare_checkpoints, parsed.padding_manifest_dir)
+        _compare_checkpoints(
+            parsed.compare_checkpoints[0],
+            parsed.compare_checkpoints[1],
+            parsed.padding_manifest_dir,
+        )

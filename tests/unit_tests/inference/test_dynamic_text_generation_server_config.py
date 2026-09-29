@@ -235,6 +235,7 @@ async def test_frontend_process_exposes_sampling_config_and_stops_client(monkeyp
     async def fake_serve(app, config):
         captured["app"] = app
         captured["hypercorn_config"] = config
+        captured["sockets"] = config.create_sockets()
 
     class FakeListener:
         def fileno(self):
@@ -248,7 +249,8 @@ async def test_frontend_process_exposes_sampling_config_and_stops_client(monkeyp
     monkeypatch.setattr(server.endpoints, "__all__", [])
     # Each replica binds its own listener, so leaving this unpatched would make the
     # test take a real port and fail on whatever already holds it.
-    monkeypatch.setattr(server, "_bind_reuseport_socket", lambda _port, _host: FakeListener())
+    listener = FakeListener()
+    monkeypatch.setattr(server, "_bind_reuseport_socket", lambda _port, _host: listener)
 
     tokenizer = object()
     multimodal_prompt_config = object()
@@ -283,7 +285,10 @@ async def test_frontend_process_exposes_sampling_config_and_stops_client(monkeyp
     assert app_config["default_top_p"] == 0.8
     assert app_config["default_top_k"] == 5
     assert app_config["eval_mode"] is True
-    assert captured["hypercorn_config"].bind == ["fd://23"]
+    assert captured["sockets"].insecure_sockets == [listener]
+    assert captured["sockets"].insecure_sockets[0] is listener
+    assert captured["sockets"].secure_sockets == []
+    assert captured["sockets"].quic_sockets == []
     assert captured["listener_closed"] is True
 
 
