@@ -1,6 +1,7 @@
 # Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 import inspect
+import socket
 from types import SimpleNamespace
 
 import pytest
@@ -17,7 +18,8 @@ def test_frontend_processes_use_spawn_context():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("provide_config", [False, True])
-async def test_server_exposes_multimodal_prompt_config(monkeypatch, provide_config):
+@pytest.mark.parametrize("serve_fails", [False, True])
+async def test_server_exposes_multimodal_prompt_config(monkeypatch, provide_config, serve_fails):
     apps = []
     clients = []
 
@@ -54,44 +56,57 @@ async def test_server_exposes_multimodal_prompt_config(monkeypatch, provide_conf
 
     served = []
 
+    listener = socket.socket()
+
     async def fake_serve(app, config):
         served.append((app, config))
-
-    closed_sockets = []
-
-    class FakeListener:
-        def fileno(self):
-            return 19
-
-        def close(self):
-            closed_sockets.append(self)
+        sockets = config.create_sockets()
+        assert sockets.insecure_sockets == [listener]
+        assert sockets.secure_sockets == sockets.quic_sockets == []
+        if serve_fails:
+            raise RuntimeError("serve failed before taking ownership")
+        # Model asyncio server shutdown closing the exact socket Hypercorn gave it.
+        sockets.insecure_sockets[0].close()
 
     custom_config = MultimodalPromptConfig(video_spec=MediaPromptSpec(model_token="<video>"))
     supplied_config = custom_config if provide_config else None
     monkeypatch.setattr(text_generation_server, "HAS_BACKEND", True)
     monkeypatch.setattr(text_generation_server, "InferenceClient", FakeClient)
     monkeypatch.setattr(text_generation_server, "Quart", FakeApp, raising=False)
-    monkeypatch.setattr(
-        text_generation_server, "Config", lambda: SimpleNamespace(bind=None), raising=False
-    )
+    monkeypatch.setattr(text_generation_server, "Config", type("FakeConfig", (), {}), raising=False)
     monkeypatch.setattr(text_generation_server, "serve", fake_serve, raising=False)
+    monkeypatch.setattr(
+        text_generation_server,
+        "Sockets",
+        lambda secure, insecure, quic: SimpleNamespace(
+            secure_sockets=secure, insecure_sockets=insecure, quic_sockets=quic
+        ),
+        raising=False,
+    )
     monkeypatch.setattr(
         text_generation_server.endpoints, "__all__", ["completion-blueprint", "chat-blueprint"]
     )
     # Each replica binds its own listener, so leaving this unpatched would make the
     # test take a real port and fail on whatever already holds it.
     monkeypatch.setattr(
-        text_generation_server, "_bind_reuseport_socket", lambda _port, _host: FakeListener()
+        text_generation_server, "_bind_reuseport_socket", lambda _port, _host: listener
     )
 
-    await text_generation_server._run_text_gen_server(
-        "coordinator:1234",
-        tokenizer=object(),
-        rank=0,
-        server_port=8080,
-        hostname="127.0.0.1",
-        multimodal_prompt_config=supplied_config,
-    )
+    try:
+        await text_generation_server._run_text_gen_server(
+            "coordinator:1234",
+            tokenizer=object(),
+            rank=0,
+            server_port=8080,
+            hostname="127.0.0.1",
+            multimodal_prompt_config=supplied_config,
+        )
+    except SystemExit as exc:
+        # trace_async_exceptions converts worker failures to exit status 1.
+        assert serve_fails
+        assert exc.code == 1
+    else:
+        assert not serve_fails
 
     assert len(apps) == len(clients) == len(served) == 1
     app = apps[0]
@@ -100,8 +115,7 @@ async def test_server_exposes_multimodal_prompt_config(monkeypatch, provide_conf
     )
     assert app.blueprints == ["completion-blueprint", "chat-blueprint"]
     assert served[0][0] is app
-    assert served[0][1].bind == ["fd://19"]
-    assert len(closed_sockets) == 1, "the listener must be released once serve() returns"
+    assert listener.fileno() == -1, "the listener must close on success and early failure"
     assert clients[0].address == "coordinator:1234"
     assert clients[0].deserialize is False
     assert clients[0].started is True

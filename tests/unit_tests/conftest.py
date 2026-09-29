@@ -3,6 +3,7 @@
 import os
 import sys
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 import torch
@@ -89,7 +90,7 @@ def set_env():
 
 
 @pytest.fixture(scope="session")
-def tmp_path_dist_ckpt(tmp_path_factory) -> Path:
+def tmp_path_dist_ckpt(tmp_path_factory) -> Iterator[Path]:
     """Common directory for saving the checkpoint.
 
     Can't use pytest `tmp_path_factory` directly because directory must be shared between processes.

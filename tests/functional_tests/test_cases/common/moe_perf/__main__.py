@@ -19,9 +19,12 @@ from megatron.core.fp8_utils import get_fp8_context
 from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_layer_with_transformer_engine_submodules,
 )
+from megatron.core.tensor_parallel.random import (
+    get_cuda_rng_tracker,
+    get_expert_parallel_rng_tracker_name,
+)
 from megatron.core.transformer.moe.fused_a2a import HAVE_DEEP_EP, HAVE_HYBRIDEP
 from megatron.core.transformer.moe.moe_layer import MoELayer, MoESubmodules
-from megatron.core.transformer.moe.moe_utils import RandomSTE
 from megatron.core.transformer.spec_utils import get_submodules
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import nvtx_range_pop, nvtx_range_push
@@ -129,6 +132,7 @@ def _assert_within_baseline(
             f"Missing baseline data for {case_name}. Set {UPDATE_BASELINES_ENV}=1 to record."
         )
 
+    baseline = cast(Dict[str, float], baseline)
     max_ratio = baseline.get("max_regression_ratio", DEFAULT_MAX_REGRESSION_RATIO)
 
     def _limit(metric_name: str) -> float:
@@ -179,6 +183,18 @@ def _assert_within_baseline(
     )
 
 
+def _clone_rng_state(state):
+    """Copy either an eager tensor state or a graph-safe generator state."""
+    return state.clone_state() if isinstance(state, torch.Generator) else state.clone()
+
+
+def _reset_expert_rng_state(rng_tracker, expert_rng_state):
+    """Replay the router stream without rewinding other tracked streams."""
+    rng_states = rng_tracker.get_states()
+    rng_states[get_expert_parallel_rng_tracker_name()] = _clone_rng_state(expert_rng_state)
+    rng_tracker.set_states(rng_states)
+
+
 def _benchmark_moe_layer(layer: MoELayer, case: MoEPerformanceCase):
     torch.cuda.synchronize()
     set_experimental_flag(True)
@@ -206,9 +222,13 @@ def _benchmark_moe_layer(layer: MoELayer, case: MoEPerformanceCase):
         generator=generator,
     )
     input_tensor.requires_grad_(True)
+    rng_tracker = get_cuda_rng_tracker()
+    expert_rng_name = get_expert_parallel_rng_tracker_name()
+    expert_rng_state = _clone_rng_state(rng_tracker.get_states()[expert_rng_name])
     for iteration in range(WARMUP_ITERS + MEASURE_ITERS):
-        if RandomSTE.generator is not None:
-            RandomSTE.generator.manual_seed(RandomSTE.generator.initial_seed())
+        # RandomSTE now draws from the expert-parallel tracker. Replay only that
+        # stream so routing stays fixed without rewinding unrelated RNG streams.
+        _reset_expert_rng_state(rng_tracker, expert_rng_state)
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             torch.distributed.barrier()
         nvtx_iter_msg = f"({case.name}) iteration {iteration}"
@@ -413,7 +433,7 @@ def test_moe_layer_performance(perf_case: MoEPerformanceCase, debug_mode: bool =
 # export MEGATRON_UPDATE_PERF_BASELINES=0 # set to 1 to update baseline perf numbers
 # uv run --no-sync python -m torch.distributed.run --nproc_per_node=8 --nnodes=1 -m tests.functional_tests.test_cases.common.moe_perf
 if __name__ == "__main__":
-    pytest.main(["-x", "-v", "-s", __file__])  # -xvs
+    raise SystemExit(pytest.main(["-x", "-v", "-s", __file__]))
     # torch.cuda.cudart().cudaProfilerStart()
     # torch.autograd.profiler.emit_nvtx(record_shapes=True).__enter__()
     # for case in PERFORMANCE_CASES:

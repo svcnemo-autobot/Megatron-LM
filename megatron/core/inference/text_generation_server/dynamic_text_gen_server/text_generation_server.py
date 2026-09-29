@@ -7,11 +7,12 @@ import multiprocessing as mp
 import socket
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from multiprocessing.process import BaseProcess
 from typing import List, Optional
 
 try:
     from hypercorn.asyncio import serve
-    from hypercorn.config import Config
+    from hypercorn.config import Config, Sockets
     from quart import Quart
 
     HAS_BACKEND = True
@@ -28,7 +29,7 @@ from .endpoints.common import apply_optional_sampling_default
 logger = logging.getLogger(__name__)
 
 # Global reference to manage the background server processes
-_SERVER_PROCESSES: List[mp.Process] = []
+_SERVER_PROCESSES: List[BaseProcess] = []
 # The policy worker is a live Ray/CUDA process with background threads by the
 # time it starts HTTP replicas. Forking it copies locks and runtime state
 # without the threads that own them, which can leave a child alive but unable
@@ -133,16 +134,23 @@ async def _run_text_gen_server(
         for endpoint in endpoints.__all__:
             app.register_blueprint(endpoint)
 
-        config = Config()
+        class ListenerConfig(Config):
+            """Give Hypercorn the existing listener without duplicating ownership."""
+
+            def create_sockets(self):
+                # Pass the socket object itself: fd:// wraps the same descriptor
+                # in a second owner, so shutdown would close it twice.
+                return Sockets([], [own_socket], [])
+
+        config = ListenerConfig()
         config.keep_alive_timeout = 30.0  # Keep connection alive between long-running requests.
         config.backlog = 2**14  # Expect high load; ensure we do not drop connections.
         config.h2_max_concurrent_streams = (
             2**14
         )  # Allow many concurrent streams for HTTP/2 clients.
 
-        # Held for this worker's lifetime; closing it would drop the listener.
+        # Hypercorn and our cleanup share one owner; socket.close() is idempotent.
         own_socket = _bind_reuseport_socket(server_port, bind_host)
-        config.bind = [f"fd://{own_socket.fileno()}"]
 
         with temp_log_level(logging.INFO, logger):
             logger.info(f"Starting text generation server on http://{hostname}:{server_port}")
@@ -345,7 +353,7 @@ def start_text_gen_server(
     return f"http://{hostname or socket.gethostname()}:{server_port}"
 
 
-def _terminate(processes: List[mp.Process], what: str):
+def _terminate(processes: List[BaseProcess], what: str):
     """Terminate a group of worker processes, escalating to kill if needed."""
     if not processes:
         return
