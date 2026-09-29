@@ -22,15 +22,16 @@ def _load_helpers(run):
         node
         for node in tree.body
         if isinstance(node, ast.FunctionDef)
-        and node.name in {"_run_with_failure_output", "_print_failure_output"}
+        and node.name in {"_run_with_failure_output", "_print_failure_output", "_print_rank_logs"}
     ]
-    assert len(helpers) == 2
+    assert len(helpers) == 3
     namespace = {
+        "Path": Path,
         "subprocess": SimpleNamespace(
             run=run,
             CompletedProcess=subprocess.CompletedProcess,
             TimeoutExpired=subprocess.TimeoutExpired,
-        )
+        ),
     }
     exec(compile(ast.Module(body=helpers, type_ignores=[]), str(RUNNER), "exec"), namespace)
     return namespace["_run_with_failure_output"]
@@ -85,3 +86,40 @@ def test_both_subprocess_paths_publish_failures():
             and node.func.id == "_run_with_failure_output"
             for node in ast.walk(function)
         )
+
+
+@pytest.mark.parametrize("timeout", [False, True])
+def test_redirected_rank_logs_survive_truncated_console(timeout, tmp_path, capsys):
+    rank = tmp_path / "run" / "attempt_0" / "5"
+    rank.mkdir(parents=True)
+    (rank / "stderr.log").write_text("complete checkpoint write exception")
+    (rank / "stdout.log").write_text("rank stdout")
+    (rank / "error.json").write_text('{"message": "write failure"}')
+    (rank / "checkpoint.bin").write_bytes(b"do not print checkpoint data")
+    error = subprocess.TimeoutExpired(["child"], 1800, stderr=b"truncated tee")
+
+    def run(*args, **kwargs):
+        assert "log_dir" not in kwargs
+        if timeout:
+            raise error
+        return subprocess.CompletedProcess(["child"], 1, "", "truncated tee")
+
+    helper = _load_helpers(run)
+    if timeout:
+        with pytest.raises(subprocess.TimeoutExpired) as raised:
+            helper(["child"], log_dir=tmp_path, timeout=1800)
+        assert raised.value is error
+    else:
+        assert helper(["child"], log_dir=tmp_path, timeout=1800).returncode == 1
+    output = capsys.readouterr().out
+    assert "complete checkpoint write exception" in output
+    assert "rank stdout" in output
+    assert '"message": "write failure"' in output
+    assert "do not print checkpoint data" not in output
+
+
+def test_success_does_not_publish_rank_logs(tmp_path, capsys):
+    (tmp_path / "stderr.log").write_text("successful rank log")
+    result = subprocess.CompletedProcess(["child"], 0, "", "")
+    assert _load_helpers(lambda *args, **kwargs: result)(["child"], log_dir=tmp_path) is result
+    assert capsys.readouterr().out == ""

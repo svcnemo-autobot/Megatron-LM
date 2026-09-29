@@ -51,15 +51,19 @@ _ROUND_TRIP_ARGS = {
 }
 
 
-def _run_with_failure_output(command, **kwargs) -> subprocess.CompletedProcess:
+def _run_with_failure_output(
+    command, *, log_dir: Path | None = None, **kwargs
+) -> subprocess.CompletedProcess:
     """Publish complete child diagnostics before scratch logs are removed."""
     try:
         result = subprocess.run(command, capture_output=True, text=True, **kwargs)
     except subprocess.TimeoutExpired as error:
         _print_failure_output(error.stdout, error.stderr)
+        _print_rank_logs(log_dir)
         raise
     if result.returncode != 0:
         _print_failure_output(result.stdout, result.stderr)
+        _print_rank_logs(log_dir)
     return result
 
 
@@ -69,6 +73,22 @@ def _print_failure_output(stdout, stderr) -> None:
         if isinstance(output, bytes):
             output = output.decode("utf-8", errors="replace")
         print(f"--- child {label} ---\n{output or ''}", flush=True)
+
+
+def _print_rank_logs(log_dir: Path | None) -> None:
+    # torchrun's console tee can stop before draining a failing rank's traceback.
+    # Read the redirected files before the test removes its scratch directory.
+    if log_dir is None:
+        return
+    for path in sorted(log_dir.rglob("*")):
+        if path.name not in {"stdout.log", "stderr.log", "error.json"} or not path.is_file():
+            continue
+        try:
+            output = path.read_text(errors="replace")
+        except OSError as error:
+            print(f"Could not read rank log {path}: {error}", flush=True)
+        else:
+            print(f"--- rank log {path.relative_to(log_dir)} ---\n{output}", flush=True)
 
 
 def _run_launcher(
@@ -103,7 +123,9 @@ def _run_launcher(
         *placement_args,
         *args,
     ]
-    return _run_with_failure_output(command, cwd=_REPO_ROOT, env=env, timeout=1800)
+    return _run_with_failure_output(
+        command, log_dir=Path(env["TORCHRUN_LOG_DIR"]), cwd=_REPO_ROOT, env=env, timeout=1800
+    )
 
 
 def _tail(result: subprocess.CompletedProcess) -> str:
