@@ -3,7 +3,9 @@
 """CPU diagnostics coverage; not a substitute for the MIMO checkpoint GPU row."""
 
 import ast
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -234,3 +236,53 @@ def test_space_preflight_precedes_resave():
         and any(keyword.arg == "resave_after_load" for keyword in node.keywords)
     )
     assert check.lineno < resave.lineno
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_checkpoint_scratch_honors_tmpdir_and_is_cleaned(failure, tmp_path, monkeypatch):
+    scratch_root = tmp_path / "scratch"
+    scratch_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(scratch_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    tree = ast.parse(RUNNER.read_text())
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "test_hetero_mimo_20l_checkpoint_round_trip_is_exact"
+    )
+    function.decorator_list = []
+    paths = []
+    error = RuntimeError("injected launcher failure")
+
+    def launch(scratch, *args, **kwargs):
+        assert scratch.parent == scratch_root
+        assert scratch.is_dir()
+        paths.append(scratch)
+        if failure:
+            raise error
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    namespace = {
+        "Path": Path,
+        "tempfile": tempfile,
+        "shutil": shutil,
+        "torch": SimpleNamespace(cuda=SimpleNamespace(device_count=lambda: 8)),
+        "_run_launcher": launch,
+        "_checkpoint_iteration": lambda path: path,
+        "_require_round_trip_space": lambda *args: None,
+        "_run_comparator": lambda *args: subprocess.CompletedProcess(
+            [], 0, "Exact checkpoint match:", ""
+        ),
+    }
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(RUNNER), "exec"), namespace)
+    run = namespace[function.name]
+    if failure:
+        with pytest.raises(RuntimeError) as raised:
+            run()
+        assert raised.value is error
+    else:
+        run()
+    assert len(paths) == (1 if failure else 2)
+    assert all(not path.exists() for path in paths)
+    assert list(scratch_root.iterdir()) == []
