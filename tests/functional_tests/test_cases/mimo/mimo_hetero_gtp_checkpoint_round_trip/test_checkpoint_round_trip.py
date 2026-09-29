@@ -25,6 +25,7 @@ from torch.distributed.checkpoint import (
     FileSystemReader,
     TensorStorageMetadata,
 )
+from torch.distributed.checkpoint.api import CheckpointException
 
 from megatron.core.dist_checkpointing import load_common_state_dict
 from megatron.core.tensor_parallel.gtp_api import HAVE_GTP
@@ -49,6 +50,22 @@ _ROUND_TRIP_ARGS = {
     "num_floating_point_operations_so_far",
     "save",
 }
+
+
+def _run_pretrain_with_failure_output(main) -> None:
+    """Emit DCP root causes before a potentially truncated distributed traceback."""
+    try:
+        main()
+    except CheckpointException as error:
+        # CheckpointException derives from BaseException, not Exception. Its default
+        # rendering puts the useful cause after long, repeated per-rank stacks.
+        for rank, (cause, _) in sorted(error.failures.items()):
+            print(
+                f"Checkpoint failure on rank {rank}: {type(cause).__name__}: {cause}",
+                file=sys.stderr,
+                flush=True,
+            )
+        raise
 
 
 def _run_with_failure_output(
@@ -510,7 +527,7 @@ if __name__ == "__main__":
         _install_checkpoint_resave_hook()
         from examples.mimo.pretrain_mimo import main
 
-        main()
+        _run_pretrain_with_failure_output(main)
     else:
         parser = argparse.ArgumentParser()
         parser.add_argument("--compare-checkpoints", nargs=2, type=Path, required=True)

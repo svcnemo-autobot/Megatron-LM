@@ -123,3 +123,57 @@ def test_success_does_not_publish_rank_logs(tmp_path, capsys):
     result = subprocess.CompletedProcess(["child"], 0, "", "")
     assert _load_helpers(lambda *args, **kwargs: result)(["child"], log_dir=tmp_path) is result
     assert capsys.readouterr().out == ""
+
+
+def _load_pretrain_helper(checkpoint_exception):
+    tree = ast.parse(RUNNER.read_text())
+    helper = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_run_pretrain_with_failure_output"
+    )
+    import sys
+
+    namespace = {"CheckpointException": checkpoint_exception, "sys": sys}
+    exec(compile(ast.Module(body=[helper], type_ignores=[]), str(RUNNER), "exec"), namespace)
+    return namespace["_run_pretrain_with_failure_output"]
+
+
+def test_checkpoint_root_causes_precede_distributed_traceback(capsys):
+    class CheckpointFailure(BaseException):
+        failures = {4: (OSError("write failed"), None), 1: (ValueError("bad shard"), None)}
+
+    error = CheckpointFailure()
+
+    def main():
+        raise error
+
+    with pytest.raises(CheckpointFailure) as raised:
+        _load_pretrain_helper(CheckpointFailure)(main)
+    assert raised.value is error
+    assert capsys.readouterr().err.splitlines() == [
+        "Checkpoint failure on rank 1: ValueError: bad shard",
+        "Checkpoint failure on rank 4: OSError: write failed",
+    ]
+
+
+def test_pretrain_success_has_no_failure_output(capsys):
+    calls = []
+    _load_pretrain_helper(BaseException)(lambda: calls.append(True))
+    assert calls == [True]
+    assert capsys.readouterr().err == ""
+
+
+def test_other_pretrain_errors_are_unchanged(capsys):
+    class CheckpointFailure(BaseException):
+        pass
+
+    error = RuntimeError("unrelated error")
+
+    def main():
+        raise error
+
+    with pytest.raises(RuntimeError) as raised:
+        _load_pretrain_helper(CheckpointFailure)(main)
+    assert raised.value is error
+    assert capsys.readouterr().err == ""
