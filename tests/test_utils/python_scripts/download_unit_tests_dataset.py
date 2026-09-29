@@ -5,6 +5,7 @@
 Populate unit-test data from staged or public NVIDIA/Megatron-LM v2.5 release assets.
 """
 
+import fcntl
 import logging
 import os
 import tarfile
@@ -111,6 +112,26 @@ def download_and_extract_asset(assets_dir: Path) -> bool:
         return True
 
     return all(download_release_asset(asset["url"], asset["name"], assets_dir) for asset in ASSETS)
+
+
+def ensure_test_data(assets_dir: Path) -> None:
+    """Prepare shared fixtures once, before any worker initializes distributed tests.
+
+    The lock lives beside the data directory so it does not make an empty
+    directory look populated. Keep an incomplete marker on failure: partial
+    extraction must not be mistaken for pre-provisioned data on the next call.
+    """
+    assets_dir.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = assets_dir.with_name(f".{assets_dir.name}.lock")
+    incomplete = assets_dir.with_name(f".{assets_dir.name}.incomplete")
+    with lock_path.open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not incomplete.exists() and assets_dir.is_dir() and any(assets_dir.iterdir()):
+            return
+        incomplete.touch()
+        if not download_and_extract_asset(assets_dir):
+            raise RuntimeError(f"Failed to prepare test data at {assets_dir}")
+        incomplete.unlink()
 
 
 @click.command()
