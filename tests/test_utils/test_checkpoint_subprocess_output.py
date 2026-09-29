@@ -177,3 +177,60 @@ def test_other_pretrain_errors_are_unchanged(capsys):
         _load_pretrain_helper(CheckpointFailure)(main)
     assert raised.value is error
     assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("free_bytes", [15, 16, 32])
+def test_round_trip_space_preflight(free_bytes, tmp_path, capsys):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "shard.distcp").write_bytes(b"x" * 12)
+    metadata = source / "metadata"
+    metadata.mkdir()
+    (metadata / "index").write_bytes(b"y" * 4)
+    tree = ast.parse(RUNNER.read_text())
+    helper = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_require_round_trip_space"
+    )
+    paths = []
+
+    def disk_usage(path):
+        paths.append(path)
+        return SimpleNamespace(free=free_bytes)
+
+    namespace = {"Path": Path, "shutil": SimpleNamespace(disk_usage=disk_usage)}
+    exec(compile(ast.Module(body=[helper], type_ignores=[]), str(RUNNER), "exec"), namespace)
+    check = namespace["_require_round_trip_space"]
+    if free_bytes < 16:
+        with pytest.raises(OSError, match="need at least 16 bytes.*have 15 bytes free"):
+            check(source, tmp_path)
+    else:
+        check(source, tmp_path)
+    assert paths == [tmp_path]
+    assert f"source_bytes=16, free_bytes={free_bytes}" in capsys.readouterr().out
+    assert (source / "shard.distcp").read_bytes() == b"x" * 12
+
+
+def test_space_preflight_precedes_resave():
+    tree = ast.parse(RUNNER.read_text())
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "test_hetero_mimo_20l_checkpoint_round_trip_is_exact"
+    )
+    calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)]
+    check = next(
+        node
+        for node in calls
+        if isinstance(node.func, ast.Name) and node.func.id == "_require_round_trip_space"
+    )
+    resave = next(
+        node
+        for node in calls
+        if isinstance(node.func, ast.Name)
+        and node.func.id == "_run_launcher"
+        and any(keyword.arg == "resave_after_load" for keyword in node.keywords)
+    )
+    assert check.lineno < resave.lineno

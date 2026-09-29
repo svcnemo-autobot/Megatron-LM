@@ -52,6 +52,22 @@ _ROUND_TRIP_ARGS = {
 }
 
 
+def _require_round_trip_space(source: Path, scratch: Path) -> None:
+    """Check the capacity needed to retain a second complete checkpoint."""
+    source_bytes = sum(path.stat().st_size for path in source.rglob("*") if path.is_file())
+    free_bytes = shutil.disk_usage(scratch).free
+    print(
+        f"Checkpoint scratch {scratch}: source_bytes={source_bytes}, free_bytes={free_bytes}",
+        flush=True,
+    )
+    if free_bytes < source_bytes:
+        raise OSError(
+            f"Insufficient checkpoint scratch space at {scratch}: "
+            f"need at least {source_bytes} bytes for a second checkpoint, "
+            f"have {free_bytes} bytes free"
+        )
+
+
 def _run_pretrain_with_failure_output(main) -> None:
     """Emit DCP root causes before a potentially truncated distributed traceback."""
     try:
@@ -496,6 +512,7 @@ def test_hetero_mimo_20l_checkpoint_round_trip_is_exact():
         )
         assert save.returncode == 0, f"checkpoint save failed:\n{_tail(save)}"
         source_checkpoint = _checkpoint_iteration(source_root)
+        _require_round_trip_space(source_checkpoint, scratch)
 
         load_save = _run_launcher(
             scratch,
