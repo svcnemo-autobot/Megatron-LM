@@ -432,8 +432,13 @@ def test_moe_layer_performance(perf_case: MoEPerformanceCase, debug_mode: bool =
 # Commands to run with pytest:
 # export MEGATRON_UPDATE_PERF_BASELINES=0 # set to 1 to update baseline perf numbers
 # uv run --no-sync python -m torch.distributed.run --nproc_per_node=8 --nnodes=1 -m tests.functional_tests.test_cases.common.moe_perf
-if __name__ == "__main__":
+def main():
+    """Run the native performance suite and propagate its pytest exit status."""
     raise SystemExit(pytest.main(["-x", "-v", "-s", __file__]))
+
+
+if __name__ == "__main__":
+    main()
     # torch.cuda.cudart().cudaProfilerStart()
     # torch.autograd.profiler.emit_nvtx(record_shapes=True).__enter__()
     # for case in PERFORMANCE_CASES:

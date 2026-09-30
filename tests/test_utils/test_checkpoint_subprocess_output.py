@@ -3,13 +3,16 @@
 """CPU diagnostics coverage; not a substitute for the MIMO checkpoint GPU row."""
 
 import ast
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+from tests.functional_tests.test_cases.mimo.mimo_hetero_gtp_checkpoint_round_trip import (
+    test_checkpoint_round_trip as runner,
+)
 
 RUNNER = (
     Path(__file__).parents[1]
@@ -18,29 +21,13 @@ RUNNER = (
 )
 
 
-def _load_helpers(run):
-    tree = ast.parse(RUNNER.read_text())
-    helpers = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name in {"_run_with_failure_output", "_print_failure_output", "_print_rank_logs"}
-    ]
-    assert len(helpers) == 3
-    namespace = {
-        "Path": Path,
-        "subprocess": SimpleNamespace(
-            run=run,
-            CompletedProcess=subprocess.CompletedProcess,
-            TimeoutExpired=subprocess.TimeoutExpired,
-        ),
-    }
-    exec(compile(ast.Module(body=helpers, type_ignores=[]), str(RUNNER), "exec"), namespace)
-    return namespace["_run_with_failure_output"]
+def _load_helpers(run, monkeypatch):
+    monkeypatch.setattr(runner.subprocess, "run", run)
+    return runner._run_with_failure_output
 
 
 @pytest.mark.parametrize("returncode", [0, 1, -9])
-def test_child_failure_preserves_early_diagnostics(returncode, capsys):
+def test_child_failure_preserves_early_diagnostics(returncode, capsys, monkeypatch):
     stdout = "early rank failure\n" + "x" * 10000
     result = subprocess.CompletedProcess(["child"], returncode, stdout, "rank stderr")
     calls = []
@@ -49,7 +36,7 @@ def test_child_failure_preserves_early_diagnostics(returncode, capsys):
         calls.append((command, kwargs))
         return result
 
-    assert _load_helpers(run)(["child"], timeout=1800) is result
+    assert _load_helpers(run, monkeypatch)(["child"], timeout=1800) is result
     assert calls == [(["child"], dict(capture_output=True, text=True, timeout=1800))]
     output = capsys.readouterr().out
     if returncode:
@@ -60,14 +47,14 @@ def test_child_failure_preserves_early_diagnostics(returncode, capsys):
 
 
 @pytest.mark.parametrize("output", [None, "partial output", b"partial output\xff"])
-def test_timeout_preserves_output_and_exception(output, capsys):
+def test_timeout_preserves_output_and_exception(output, capsys, monkeypatch):
     error = subprocess.TimeoutExpired(["child"], 1800, output=output, stderr=output)
 
     def run(*args, **kwargs):
         raise error
 
     with pytest.raises(subprocess.TimeoutExpired) as raised:
-        _load_helpers(run)(["child"], timeout=1800)
+        _load_helpers(run, monkeypatch)(["child"], timeout=1800)
     assert raised.value is error
     captured = capsys.readouterr().out
     assert "--- child stdout ---" in captured
@@ -91,7 +78,7 @@ def test_both_subprocess_paths_publish_failures():
 
 
 @pytest.mark.parametrize("timeout", [False, True])
-def test_redirected_rank_logs_survive_truncated_console(timeout, tmp_path, capsys):
+def test_redirected_rank_logs_survive_truncated_console(timeout, tmp_path, capsys, monkeypatch):
     rank = tmp_path / "run" / "attempt_0" / "5"
     rank.mkdir(parents=True)
     (rank / "stderr.log").write_text("complete checkpoint write exception")
@@ -106,7 +93,7 @@ def test_redirected_rank_logs_survive_truncated_console(timeout, tmp_path, capsy
             raise error
         return subprocess.CompletedProcess(["child"], 1, "", "truncated tee")
 
-    helper = _load_helpers(run)
+    helper = _load_helpers(run, monkeypatch)
     if timeout:
         with pytest.raises(subprocess.TimeoutExpired) as raised:
             helper(["child"], log_dir=tmp_path, timeout=1800)
@@ -120,28 +107,22 @@ def test_redirected_rank_logs_survive_truncated_console(timeout, tmp_path, capsy
     assert "do not print checkpoint data" not in output
 
 
-def test_success_does_not_publish_rank_logs(tmp_path, capsys):
+def test_success_does_not_publish_rank_logs(tmp_path, capsys, monkeypatch):
     (tmp_path / "stderr.log").write_text("successful rank log")
     result = subprocess.CompletedProcess(["child"], 0, "", "")
-    assert _load_helpers(lambda *args, **kwargs: result)(["child"], log_dir=tmp_path) is result
+    assert (
+        _load_helpers(lambda *args, **kwargs: result, monkeypatch)(["child"], log_dir=tmp_path)
+        is result
+    )
     assert capsys.readouterr().out == ""
 
 
-def _load_pretrain_helper(checkpoint_exception):
-    tree = ast.parse(RUNNER.read_text())
-    helper = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "_run_pretrain_with_failure_output"
-    )
-    import sys
-
-    namespace = {"CheckpointException": checkpoint_exception, "sys": sys}
-    exec(compile(ast.Module(body=[helper], type_ignores=[]), str(RUNNER), "exec"), namespace)
-    return namespace["_run_pretrain_with_failure_output"]
+def _load_pretrain_helper(checkpoint_exception, monkeypatch):
+    monkeypatch.setattr(runner, "CheckpointException", checkpoint_exception)
+    return runner._run_pretrain_with_failure_output
 
 
-def test_checkpoint_root_causes_precede_distributed_traceback(capsys):
+def test_checkpoint_root_causes_precede_distributed_traceback(capsys, monkeypatch):
     class CheckpointFailure(BaseException):
         failures = {4: (OSError("write failed"), None), 1: (ValueError("bad shard"), None)}
 
@@ -151,7 +132,7 @@ def test_checkpoint_root_causes_precede_distributed_traceback(capsys):
         raise error
 
     with pytest.raises(CheckpointFailure) as raised:
-        _load_pretrain_helper(CheckpointFailure)(main)
+        _load_pretrain_helper(CheckpointFailure, monkeypatch)(main)
     assert raised.value is error
     assert capsys.readouterr().err.splitlines() == [
         "Checkpoint failure on rank 1: ValueError: bad shard",
@@ -159,14 +140,14 @@ def test_checkpoint_root_causes_precede_distributed_traceback(capsys):
     ]
 
 
-def test_pretrain_success_has_no_failure_output(capsys):
+def test_pretrain_success_has_no_failure_output(capsys, monkeypatch):
     calls = []
-    _load_pretrain_helper(BaseException)(lambda: calls.append(True))
+    _load_pretrain_helper(BaseException, monkeypatch)(lambda: calls.append(True))
     assert calls == [True]
     assert capsys.readouterr().err == ""
 
 
-def test_other_pretrain_errors_are_unchanged(capsys):
+def test_other_pretrain_errors_are_unchanged(capsys, monkeypatch):
     class CheckpointFailure(BaseException):
         pass
 
@@ -176,34 +157,27 @@ def test_other_pretrain_errors_are_unchanged(capsys):
         raise error
 
     with pytest.raises(RuntimeError) as raised:
-        _load_pretrain_helper(CheckpointFailure)(main)
+        _load_pretrain_helper(CheckpointFailure, monkeypatch)(main)
     assert raised.value is error
     assert capsys.readouterr().err == ""
 
 
 @pytest.mark.parametrize("free_bytes", [15, 16, 32])
-def test_round_trip_space_preflight(free_bytes, tmp_path, capsys):
+def test_round_trip_space_preflight(free_bytes, tmp_path, capsys, monkeypatch):
     source = tmp_path / "source"
     source.mkdir()
     (source / "shard.distcp").write_bytes(b"x" * 12)
     metadata = source / "metadata"
     metadata.mkdir()
     (metadata / "index").write_bytes(b"y" * 4)
-    tree = ast.parse(RUNNER.read_text())
-    helper = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "_require_round_trip_space"
-    )
     paths = []
 
     def disk_usage(path):
         paths.append(path)
         return SimpleNamespace(free=free_bytes)
 
-    namespace = {"Path": Path, "shutil": SimpleNamespace(disk_usage=disk_usage)}
-    exec(compile(ast.Module(body=[helper], type_ignores=[]), str(RUNNER), "exec"), namespace)
-    check = namespace["_require_round_trip_space"]
+    monkeypatch.setattr(runner.shutil, "disk_usage", disk_usage)
+    check = runner._require_round_trip_space
     if free_bytes < 16:
         with pytest.raises(OSError, match="need at least 16 bytes.*have 15 bytes free"):
             check(source, tmp_path)
@@ -244,14 +218,6 @@ def test_checkpoint_scratch_honors_tmpdir_and_is_cleaned(failure, tmp_path, monk
     scratch_root.mkdir()
     monkeypatch.setenv("TMPDIR", str(scratch_root))
     monkeypatch.setattr(tempfile, "tempdir", None)
-    tree = ast.parse(RUNNER.read_text())
-    function = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name == "test_hetero_mimo_20l_checkpoint_round_trip_is_exact"
-    )
-    function.decorator_list = []
     paths = []
     error = RuntimeError("injected launcher failure")
 
@@ -263,20 +229,16 @@ def test_checkpoint_scratch_honors_tmpdir_and_is_cleaned(failure, tmp_path, monk
             raise error
         return subprocess.CompletedProcess([], 0, "", "")
 
-    namespace = {
-        "Path": Path,
-        "tempfile": tempfile,
-        "shutil": shutil,
-        "torch": SimpleNamespace(cuda=SimpleNamespace(device_count=lambda: 8)),
-        "_run_launcher": launch,
-        "_checkpoint_iteration": lambda path: path,
-        "_require_round_trip_space": lambda *args: None,
-        "_run_comparator": lambda *args: subprocess.CompletedProcess(
-            [], 0, "Exact checkpoint match:", ""
-        ),
-    }
-    exec(compile(ast.Module(body=[function], type_ignores=[]), str(RUNNER), "exec"), namespace)
-    run = namespace[function.name]
+    monkeypatch.setattr(runner.torch.cuda, "device_count", lambda: 8)
+    monkeypatch.setattr(runner, "_run_launcher", launch)
+    monkeypatch.setattr(runner, "_checkpoint_iteration", lambda path: path)
+    monkeypatch.setattr(runner, "_require_round_trip_space", lambda *args: None)
+    monkeypatch.setattr(
+        runner,
+        "_run_comparator",
+        lambda *args: subprocess.CompletedProcess([], 0, "Exact checkpoint match:", ""),
+    )
+    run = runner.test_hetero_mimo_20l_checkpoint_round_trip_is_exact
     if failure:
         with pytest.raises(RuntimeError) as raised:
             run()

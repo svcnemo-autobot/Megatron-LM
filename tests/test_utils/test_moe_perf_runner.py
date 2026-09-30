@@ -4,9 +4,10 @@
 
 import ast
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
+
+from tests.functional_tests.test_cases.common.moe_perf import __main__ as runner
 
 RUNNER = Path(__file__).parents[1] / "functional_tests/test_cases/common/moe_perf/__main__.py"
 
@@ -28,20 +29,10 @@ class GeneratorState:
 
 
 @pytest.mark.parametrize("state_type", [TensorState, GeneratorState])
-def test_expert_rng_replay_preserves_snapshot_and_other_streams(state_type):
+def test_expert_rng_replay_preserves_snapshot_and_other_streams(state_type, monkeypatch):
     tree = ast.parse(RUNNER.read_text())
-    helpers = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name in {"_clone_rng_state", "_reset_expert_rng_state"}
-    ]
-    assert len(helpers) == 2
-    namespace = {
-        "torch": SimpleNamespace(Generator=GeneratorState),
-        "get_expert_parallel_rng_tracker_name": lambda: "expert",
-    }
-    exec(compile(ast.Module(body=helpers, type_ignores=[]), str(RUNNER), "exec"), namespace)
+    monkeypatch.setattr(runner.torch, "Generator", GeneratorState)
+    monkeypatch.setattr(runner, "get_expert_parallel_rng_tracker_name", lambda: "expert")
 
     class Tracker:
         states = {"expert": state_type(7), "model": state_type(13)}
@@ -53,10 +44,10 @@ def test_expert_rng_replay_preserves_snapshot_and_other_streams(state_type):
             self.states = states
 
     tracker = Tracker()
-    snapshot = namespace["_clone_rng_state"](tracker.get_states()["expert"])
+    snapshot = runner._clone_rng_state(tracker.get_states()["expert"])
     for _ in range(3):
         other = tracker.states["model"]
-        namespace["_reset_expert_rng_state"](tracker, snapshot)
+        runner._reset_expert_rng_state(tracker, snapshot)
         assert tracker.states["expert"].value == 7
         assert tracker.states["model"] is other
         tracker.states["expert"].value += 1
@@ -79,27 +70,25 @@ def test_expert_rng_replay_preserves_snapshot_and_other_streams(state_type):
 
 
 @pytest.mark.parametrize("exit_code", [0, 1, 2, 5])
-def test_module_entrypoint_propagates_pytest_exit_code(exit_code):
+def test_module_entrypoint_propagates_pytest_exit_code(exit_code, monkeypatch):
     tree = ast.parse(RUNNER.read_text())
     guard = next(
         node
         for node in tree.body
         if isinstance(node, ast.If) and ast.unparse(node.test) == "__name__ == '__main__'"
     )
+    assert len(guard.body) == 1
+    call = guard.body[0]
+    assert isinstance(call, ast.Expr) and isinstance(call.value, ast.Call)
+    assert isinstance(call.value.func, ast.Name) and call.value.func.id == "main"
     calls = []
 
     def run_pytest(args):
         calls.append(args)
         return exit_code
 
+    monkeypatch.setattr(runner.pytest, "main", run_pytest)
     with pytest.raises(SystemExit) as error:
-        exec(
-            compile(ast.Module(body=[guard], type_ignores=[]), str(RUNNER), "exec"),
-            {
-                "__name__": "__main__",
-                "__file__": str(RUNNER),
-                "pytest": SimpleNamespace(main=run_pytest),
-            },
-        )
+        runner.main()
     assert error.value.code == exit_code
     assert calls == [["-x", "-v", "-s", str(RUNNER)]]

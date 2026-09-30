@@ -86,11 +86,15 @@ async def test_server_exposes_multimodal_prompt_config(monkeypatch, provide_conf
     monkeypatch.setattr(
         text_generation_server.endpoints, "__all__", ["completion-blueprint", "chat-blueprint"]
     )
+
     # Each replica binds its own listener, so leaving this unpatched would make the
     # test take a real port and fail on whatever already holds it.
-    monkeypatch.setattr(
-        text_generation_server, "_bind_reuseport_socket", lambda _port, _host: listener
-    )
+    def fake_bind(port, host):
+        # This unit test must never resolve a hostname or bind a real endpoint.
+        assert (port, host) == (8080, "inference.example.invalid")
+        return listener
+
+    monkeypatch.setattr(text_generation_server, "_bind_reuseport_socket", fake_bind)
 
     try:
         await text_generation_server._run_text_gen_server(
@@ -98,7 +102,7 @@ async def test_server_exposes_multimodal_prompt_config(monkeypatch, provide_conf
             tokenizer=object(),
             rank=0,
             server_port=8080,
-            hostname="127.0.0.1",
+            hostname="inference.example.invalid",
             multimodal_prompt_config=supplied_config,
         )
     except SystemExit as exc:
