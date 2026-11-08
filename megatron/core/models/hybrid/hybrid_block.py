@@ -192,7 +192,6 @@ class HybridStack(MegatronModule):
         )
         self.mtp_layer_number = mtp_layer_number
         self.boundary_layout = boundary_layout
-        self._uses_stack_cp_layout = uses_stack_cp_layout
 
         assert pg_collection is not None, "pg_collection must be provided for HybridStack"
 
@@ -507,7 +506,9 @@ class HybridStack(MegatronModule):
         if packed_seq_params is None or packed_seq_params.local_cp_size is None:
             return runtime_cp_group, self._cp_layout_manager
 
-        if runtime_cp_group.size() == 1 or not self._uses_stack_cp_layout:
+        if runtime_cp_group.size() == 1 or not getattr(
+            self.config, "_linear_cp_layout_explicit", True
+        ):
             # Without an explicit stack layout (DSv4), the attention modules own the
             # runtime-CP boundaries, matching the static manager gate in __init__.
             return runtime_cp_group, None
@@ -652,21 +653,11 @@ class HybridStack(MegatronModule):
             )
 
         input_ids_by_layout = None
-        if cp_layout_state is not None:
-            layouts = set(cp_layout_state.manager.layer_layouts)
-            if input_ids is not None:
-                input_ids_by_layout = {
-                    layout: cp_layout_state.convert_sequence_metadata(input_ids, layout)
-                    for layout in layouts
-                }
-            if padding_mask_by_layout is None and padding_mask is not None:
-                # HybridModel supplies per-layout masks when it has a dynamic-CP batch,
-                # where each layout can carry its own padded length. Otherwise derive
-                # them from the contiguous mask.
-                padding_mask_by_layout = {
-                    layout: cp_layout_state.convert_sequence_metadata(padding_mask, layout)
-                    for layout in layouts
-                }
+        if cp_layout_state is not None and input_ids is not None:
+            input_ids_by_layout = {
+                layout: cp_layout_state.convert_sequence_metadata(input_ids, layout)
+                for layout in set(cp_layout_state.manager.layer_layouts)
+            }
 
         packed_sequence_cp_metadata = None
         if (
@@ -689,6 +680,28 @@ class HybridStack(MegatronModule):
         # Delete the obsolete reference to the initial input tensor if necessary
         if isinstance(hidden_states, WrappedTensor):
             hidden_states = hidden_states.unwrap()
+
+        if (
+            cp_layout_state is not None
+            and padding_mask_by_layout is None
+            and padding_mask is not None
+        ):
+            # HybridModel supplies per-layout masks when it has a dynamic-CP batch,
+            # where each layout can carry its own padded length. Otherwise derive
+            # them from the contiguous mask. HybridModel and MTP callers may already
+            # have scattered that mask into the activations' sequence-parallel frame.
+            metadata_kwargs = {}
+            if (
+                cp_layout_state.manager.sequence_parallel
+                and padding_mask.shape[1] == hidden_states.shape[0]
+            ):
+                metadata_kwargs["sequence_parallel_local"] = True
+            padding_mask_by_layout = {
+                layout: cp_layout_state.convert_sequence_metadata(
+                    padding_mask, layout, **metadata_kwargs
+                )
+                for layout in set(cp_layout_state.manager.layer_layouts)
+            }
 
         if self.config.enable_mhc_connections and self.pre_process and not self.is_mtp_layer:
             hidden_states = HyperConnectionModule.input_expand(

@@ -267,7 +267,7 @@ def test_mtp_padding_layout_conversion_uses_activation_tp_ownership(monkeypatch)
     from megatron.core.transformer import multi_token_prediction as mtp
 
     cp_group = SimpleNamespace(size=lambda: 2)
-    tp_group = object()
+    tp_group = SimpleNamespace(size=lambda: 2)
     tp_cp_group = object()
     plan = object()
     block = SimpleNamespace(
