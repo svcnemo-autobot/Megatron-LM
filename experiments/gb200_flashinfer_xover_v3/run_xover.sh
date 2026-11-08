@@ -42,7 +42,7 @@ for trial in new1 old1 new2 old2; do
     echo "XOVER_STAGE trial=$trial fi=$v $(date -u +%FT%TZ)"
     "$PY" experiments/gb200_flashinfer_xover_v3/report_versions.py
     timeout 2400 "$PY" -m torch.distributed.run --nproc_per_node 4 --nnodes 1 \
-      --master_addr localhost --master_port 29500 -m pytest -vs -p no:cacheprovider -rA \
+      --standalone -m pytest -vs -p no:cacheprovider -rA \
       "$TEST" -k "$SEL"
   ) > "$OUT/$trial.log" 2>&1
   rc=$?
