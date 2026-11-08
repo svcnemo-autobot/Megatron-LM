@@ -1,0 +1,17 @@
+flashinfer-python==0.7.2.post1
+apache-tvm-ffi==0.1.11
+click==8.5.0
+cuda-python==13.4.1
+cuda-tile==1.6.0
+einops==0.8.2
+nccl-extensions==0.1.0
+nccl4py==0.6.0
+ninja==1.13.2
+numpy==2.5.3
+nvidia-cudnn-frontend==1.32.0
+nvidia-cutlass-dsl==4.8.0
+nvidia-ml-py==13.615.71
+packaging==26.3
+requests==2.34.2
+tabulate==0.10.0
+tqdm==4.70.1
